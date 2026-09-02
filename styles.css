@@ -1,0 +1,213 @@
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-panel: #1e2a45;
+  --bg-input: #0f1626;
+  --border: #2a3a5c;
+  --text: #e0e0e0;
+  --text-dim: #8899aa;
+  --accent: #00d4ff;
+  --accent-dim: #0088aa;
+  --highlight: rgba(0, 212, 255, 0.15);
+  --danger: #ff4466;
+  --toolbar-height: 40px;
+  --status-height: 24px;
+  --panel-width: 200px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-primary);
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+/* Toolbar */
+#toolbar {
+  height: var(--toolbar-height);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent);
+  margin-right: 8px;
+}
+
+select, button {
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+}
+
+select:hover, button:hover {
+  border-color: var(--accent-dim);
+}
+
+button:active {
+  background: var(--highlight);
+}
+
+.mode-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+#scene-selector {
+  min-width: 200px;
+}
+
+/* Main editor layout */
+#editor-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Panels */
+#panel-left, #panel-right {
+  width: var(--panel-width);
+  min-width: var(--panel-width);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#panel-right {
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+.panel {
+  border-bottom: 1px solid var(--border);
+  padding: 6px;
+}
+
+.panel h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.panel canvas {
+  width: 100%;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  cursor: crosshair;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+
+/* Main canvas area */
+#panel-main {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#main-canvas {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  cursor: crosshair;
+  position: absolute;
+}
+
+/* Properties */
+#prop-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#prop-controls label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+#prop-controls input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+
+.prop-row {
+  display: flex;
+  gap: 4px;
+  padding: 2px 0;
+  color: var(--text-dim);
+}
+
+.prop-row span:last-child {
+  color: var(--text);
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+/* Status bar */
+#status-bar {
+  height: var(--status-height);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
+}

@@ -1,0 +1,34 @@
+# Gaia Mapper — Agent Context
+
+Browser-based SNES tileset and tilemap editor. TypeScript + Canvas 2D, no UI framework.
+
+## Before modifying this project
+
+1. Read `docs/architecture.md` for project structure and data flow
+2. Read `docs/snes-data-model.md` for VRAM/palette/tileset/tilemap internals
+3. Read `docs/editors.md` for editor interaction patterns
+4. Read `docs/rendering.md` for the pixel pipeline
+5. Read `docs/undo-redo.md` for the history system
+6. Read `docs/design-decisions.md` for rationale on key choices
+
+## Key conventions
+
+- **No UI framework** — vanilla TypeScript + DOM. Do not introduce React, Lit, etc.
+- **Minimal dependencies** — only `fflate` at runtime. Do not add packages unless essential.
+- **IIFE bundle** — `tsdown` builds `dist/app.iife.js`. No ESM at runtime.
+- **Shared mutable AppState** — single state object passed by reference. Event bus for notifications.
+- **DPR scaling** — all canvases must scale backing store by `devicePixelRatio` and disable `imageSmoothingEnabled`.
+- **Undo support** — all user-facing mutations must return old/new values and be wired to `History.push()`.
+
+## Build commands
+
+```bash
+npm run build       # dist/app.iife.js
+npm run dev         # watch mode
+npm run payload     # build payload.zip from baserom
+npx serve .         # serve for browser testing
+```
+
+## RAG knowledge base
+
+Project docs are ingested into `gaia-knowledge/corpus/gaia-mapper/` via `scripts/ingest-mapper.mjs`. After editing docs, run `npm run ingest:all` in the `gaia-knowledge` repo to update the corpus.

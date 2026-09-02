@@ -1,0 +1,22 @@
+{
+  "name": "gaia-mapper",
+  "version": "0.1.0",
+  "description": "Browser-based SNES tileset and tilemap editor",
+  "type": "module",
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "payload": "tsx scripts/build-payload.ts"
+  },
+  "author": "GaiaLabs Team",
+  "license": "MIT",
+  "dependencies": {
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "tsdown": "^0.22.14",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.3"
+  }
+}

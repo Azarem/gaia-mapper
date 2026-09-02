@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gaia Mapper</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header id="toolbar">
+    <div class="toolbar-group">
+      <span class="app-title">Gaia Mapper</span>
+      <select id="scene-selector" disabled>
+        <option value="">Loading payload...</option>
+      </select>
+    </div>
+    <div class="toolbar-group">
+      <button id="btn-layer" class="mode-btn" title="Toggle Layer 1 / Layer 2">Layer 1</button>
+      <button id="btn-grid" class="mode-btn" title="Toggle grid overlay">Grid</button>
+    </div>
+    <div class="toolbar-group">
+      <button id="btn-undo" title="Undo (Ctrl+Z)" disabled>&#x21B6; Undo</button>
+      <button id="btn-redo" title="Redo (Ctrl+Y)" disabled>&#x21B7; Redo</button>
+    </div>
+    <div class="toolbar-group">
+      <button id="btn-import-gfx" title="Import raw graphics into VRAM">Import GFX</button>
+      <button id="btn-export" title="Export current asset">Export</button>
+    </div>
+  </header>
+
+  <main id="editor-layout">
+    <aside id="panel-left">
+      <section id="tileset-picker-panel" class="panel">
+        <h3>Tileset</h3>
+        <canvas id="tileset-picker-canvas"></canvas>
+      </section>
+    </aside>
+
+    <section id="panel-main">
+      <canvas id="main-canvas"></canvas>
+    </section>
+
+    <aside id="panel-right">
+      <section id="gfx-panel" class="panel">
+        <h3>VRAM Tiles</h3>
+        <canvas id="gfx-canvas"></canvas>
+      </section>
+      <section id="palette-panel" class="panel">
+        <h3>Palette</h3>
+        <canvas id="palette-canvas"></canvas>
+      </section>
+      <section id="properties-panel" class="panel">
+        <h3>Properties</h3>
+        <div id="prop-controls">
+          <label><input type="checkbox" id="prop-hflip"> H-Flip</label>
+          <label><input type="checkbox" id="prop-vflip"> V-Flip</label>
+          <label><input type="checkbox" id="prop-priority"> Priority</label>
+          <label><input type="checkbox" id="prop-block"> Block</label>
+          <div class="prop-row">
+            <span>Tile: </span><span id="prop-tile-index">--</span>
+          </div>
+          <div class="prop-row">
+            <span>Palette: </span><span id="prop-palette-index">--</span>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer id="status-bar">
+    <span id="status-coords">--</span>
+    <span id="status-info">Ready</span>
+  </footer>
+
+  <input type="file" id="file-import-gfx" accept=".bin" style="display:none">
+
+  <script src="dist/app.iife.js"></script>
+</body>
+</html>
