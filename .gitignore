@@ -1,5 +1,6 @@
 node_modules/
 dist/
 *.zip
+!payload.zip
 *.log
 .DS_Store

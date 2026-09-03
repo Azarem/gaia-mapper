@@ -4,7 +4,10 @@ import { CanvasView } from './ui/canvas-view';
 import { History, type UndoAction } from './ui/history';
 import { fetchPayload } from './data/payload';
 import { parseManifest, type PayloadManifest, type SceneEntry } from './data/manifest';
-import { loadScene, type SceneState } from './data/scene-loader';
+import {
+  loadScene, importAssetData, exportAssetData,
+  type SceneState, type LoadedAsset, type LoadedAssetType,
+} from './data/scene-loader';
 import { TilesetEditor } from './editor/tileset-editor';
 import { TilemapEditor, type TileChange } from './editor/tilemap-editor';
 import { GfxViewer } from './editor/gfx-viewer';
@@ -76,8 +79,9 @@ async function init(): Promise<void> {
       tilemapEditor.onHover(x, y);
       mainView.redraw();
     },
-    onClick: (x, y, btn) => {
-      tilemapEditor.onClick(x, y, btn);
+    onClick: (x, y, btn, ctrlKey) => {
+      const effectiveBtn = (btn === 0 && ctrlKey) ? 2 : btn;
+      tilemapEditor.onClick(x, y, effectiveBtn);
       mainView.refreshOffscreen();
       mainView.redraw();
     },
@@ -94,6 +98,13 @@ async function init(): Promise<void> {
   setupResizeObserver(mainCanvas, (w, h) => {
     mainView.resize(w, h);
     mainView.fitToView();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Control') mainCanvas.style.cursor = 'copy';
+  });
+  document.addEventListener('keyup', (e) => {
+    if (e.key === 'Control') mainCanvas.style.cursor = 'crosshair';
   });
 
   const tilesetEditor = new TilesetEditor(state);
@@ -212,15 +223,166 @@ async function init(): Promise<void> {
     }
   });
 
-  // --- Layer switching ---
+  // --- Asset dropdown ---
 
   const layerBtn = $('btn-layer') as HTMLButtonElement;
-  layerBtn.addEventListener('click', () => {
-    state.activeLayer = state.activeLayer === 1 ? 2 : 1;
-    layerBtn.textContent = `Layer ${state.activeLayer}`;
+  const dropdown = $('asset-dropdown') as HTMLDivElement;
+  const fileInput = $('file-import') as HTMLInputElement;
+
+  function updateLayerButton(): void {
+    layerBtn.innerHTML = `Layer ${state.activeLayer} &#x25BE;`;
     layerBtn.classList.toggle('active', state.activeLayer === 2);
-    events.emit('layer:changed', { layer: state.activeLayer });
+  }
+
+  function switchLayer(layer: 1 | 2): void {
+    if (state.activeLayer === layer) return;
+    state.activeLayer = layer;
+    updateLayerButton();
+    events.emit('layer:changed', { layer });
     refreshAll();
+  }
+
+  const TYPE_ORDER: LoadedAssetType[] = ['tilemap', 'tileset', 'bitmap', 'palette'];
+  const TYPE_LABELS: Record<LoadedAssetType, string> = {
+    tilemap: 'Tilemaps', tileset: 'Tilesets', bitmap: 'Bitmaps', palette: 'Palettes',
+  };
+
+  const TYPE_SVG: Record<LoadedAssetType, string> = {
+    tilemap: '<svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="5" height="5" rx=".5" fill="none" stroke="#4fc3f7" stroke-width="1.3"/><rect x="8" y="1" width="5" height="5" rx=".5" fill="none" stroke="#4fc3f7" stroke-width="1.3"/><rect x="1" y="8" width="5" height="5" rx=".5" fill="none" stroke="#4fc3f7" stroke-width="1.3"/><rect x="8" y="8" width="5" height="5" rx=".5" fill="none" stroke="#4fc3f7" stroke-width="1.3"/></svg>',
+    tileset: '<svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" rx="1" fill="none" stroke="#81c784" stroke-width="1.3"/><line x1="1" y1="5" x2="13" y2="5" stroke="#81c784" stroke-width=".8" opacity=".6"/><line x1="1" y1="9" x2="13" y2="9" stroke="#81c784" stroke-width=".8" opacity=".6"/><line x1="5" y1="1" x2="5" y2="13" stroke="#81c784" stroke-width=".8" opacity=".6"/><line x1="9" y1="1" x2="9" y2="13" stroke="#81c784" stroke-width=".8" opacity=".6"/></svg>',
+    bitmap: '<svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="2" width="12" height="10" rx="1" fill="none" stroke="#ffb74d" stroke-width="1.3"/><circle cx="4.5" cy="5.5" r="1.5" fill="#ffb74d"/><path d="M1 9.5l3.5-2.5 2 1.5L10 5l3 3.5" stroke="#ffb74d" stroke-width="1" fill="none" stroke-linejoin="round"/></svg>',
+    palette: '<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5.5" fill="none" stroke="#ce93d8" stroke-width="1.3"/><circle cx="5" cy="5" r="1.3" fill="#ef5350"/><circle cx="9" cy="5" r="1.3" fill="#66bb6a"/><circle cx="7" cy="9.5" r="1.3" fill="#42a5f5"/></svg>',
+  };
+
+  const ICON_EDIT = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M1.5 10.5l.8-3.2L9 .5l2 2L4.2 9.3z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M7.8 1.8l2.4 2.4" stroke="currentColor" stroke-width="1" fill="none"/></svg>';
+  const ICON_IMPORT = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 8V1.5M3.5 5.5L6 8l2.5-2.5M1.5 10.5h9" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const ICON_EXPORT = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2v6.5M3.5 4.5L6 2l2.5 2.5M1.5 10.5h9" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function buildDropdownContent(): void {
+    if (!state.scene) {
+      dropdown.innerHTML = '<div class="asset-empty">No scene loaded</div>';
+      return;
+    }
+
+    const assets = state.scene.loadedAssets;
+    const grouped = new Map<LoadedAssetType, LoadedAsset[]>();
+    for (const a of assets) grouped.set(a.type, [...(grouped.get(a.type) ?? []), a]);
+
+    let html = '';
+    for (const type of TYPE_ORDER) {
+      const list = grouped.get(type);
+      if (!list?.length) continue;
+      html += `<div class="asset-type-header">${TYPE_LABELS[type]}</div>`;
+      for (let i = 0; i < list.length; i++) {
+        const a = list[i];
+        const globalIdx = assets.indexOf(a);
+        const layerHint = a.layer ? ` L${a.layer}` : '';
+        html += `<div class="asset-entry" data-index="${globalIdx}">`;
+        if (type === 'tilemap') {
+          const target = (a.layer & 1) ? 1 : 2;
+          html += `<button class="asset-btn edit-btn" data-action="edit" data-layer="${target}" title="Edit this tilemap">${ICON_EDIT}</button>`;
+        }
+        html += `<span class="asset-type-icon" title="${type}">${TYPE_SVG[type]}</span>`;
+        html += `<span class="asset-name" title="${a.filename}${layerHint}">${a.filename}${layerHint}</span>`;
+        html += `<button class="asset-btn import-btn" data-action="import" data-index="${globalIdx}" title="Import ${a.extension}">${ICON_IMPORT}</button>`;
+        html += `<button class="asset-btn export-btn" data-action="export" data-index="${globalIdx}" title="Export ${a.extension}">${ICON_EXPORT}</button>`;
+        html += '</div>';
+      }
+    }
+
+    if (!html) html = '<div class="asset-empty">No editable assets</div>';
+    dropdown.innerHTML = html;
+  }
+
+  function closeDropdown(): void {
+    dropdown.classList.remove('open');
+  }
+
+  layerBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = dropdown.classList.contains('open');
+    if (isOpen) {
+      closeDropdown();
+    } else {
+      buildDropdownContent();
+      dropdown.classList.add('open');
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!dropdown.contains(e.target as Node) && e.target !== layerBtn) {
+      closeDropdown();
+    }
+  });
+
+  function downloadBlob(data: Uint8Array, filename: string): void {
+    const blob = new Blob([data.buffer as ArrayBuffer], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function getExportFilename(asset: LoadedAsset): string {
+    const base = asset.resolvedKey.replace(/^.*[\\/]/, '');
+    if (base.includes('.')) return base;
+    return asset.filename + asset.extension;
+  }
+
+  let pendingImportAsset: LoadedAsset | null = null;
+
+  dropdown.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.asset-btn') as HTMLElement | null;
+    if (!btn || !state.scene || !state.payload) return;
+
+    const action = btn.dataset.action;
+    const index = Number(btn.dataset.index);
+    const asset = state.scene.loadedAssets[index];
+
+    if (action === 'edit') {
+      const layer = Number(btn.dataset.layer) as 1 | 2;
+      switchLayer(layer);
+      closeDropdown();
+      events.emit('status:info', `Editing layer ${layer} tilemap`);
+      return;
+    }
+
+    if (action === 'export' && asset) {
+      const data = exportAssetData(state.scene, asset, state.payload);
+      if (data) {
+        const filename = getExportFilename(asset);
+        downloadBlob(data, filename);
+        events.emit('status:info', `Exported ${filename}`);
+      }
+      return;
+    }
+
+    if (action === 'import' && asset) {
+      pendingImportAsset = asset;
+      fileInput.accept = asset.extension;
+      fileInput.click();
+      return;
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (!file || !state.scene || !pendingImportAsset) return;
+
+    const asset = pendingImportAsset;
+    pendingImportAsset = null;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const data = new Uint8Array(reader.result as ArrayBuffer);
+      importAssetData(state.scene!, asset, data);
+      events.emit('asset:imported');
+      events.emit('status:info', `Imported ${file.name} as ${asset.type}`);
+    };
+    reader.readAsArrayBuffer(file);
+    fileInput.value = '';
   });
 
   // Grid toggle
@@ -259,28 +421,6 @@ async function init(): Promise<void> {
   propPriority.addEventListener('change', onPropChange);
   propBlock.addEventListener('change', onPropChange);
 
-  // Export
-  $('btn-export').addEventListener('click', () => {
-    if (!state.scene) return;
-    tilemapEditor.exportTilemap();
-  });
-
-  // Import GFX
-  const fileInput = $('file-import-gfx') as HTMLInputElement;
-  $('btn-import-gfx').addEventListener('click', () => fileInput.click());
-  fileInput.addEventListener('change', () => {
-    const file = fileInput.files?.[0];
-    if (!file || !state.scene) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const data = new Uint8Array(reader.result as ArrayBuffer);
-      state.scene!.vram.importRawGraphics(data, 0x4000);
-      events.emit('vram:imported');
-    };
-    reader.readAsArrayBuffer(file);
-    fileInput.value = '';
-  });
 
   // --- Event subscriptions ---
 
@@ -319,7 +459,7 @@ async function init(): Promise<void> {
     events.emit('tileset:changed');
   });
 
-  events.on('vram:imported', () => refreshAll());
+  events.on('asset:imported', () => refreshAll());
 
   events.on('status:coords', (text) => {
     ($('status-coords') as HTMLSpanElement).textContent = text;
@@ -333,6 +473,9 @@ async function init(): Promise<void> {
   sceneSelector.onSelect(async (entry: SceneEntry) => {
     if (!state.payload || !state.manifest) return;
     events.emit('status:info', `Loading ${entry.description}...`);
+
+    state.activeLayer = 1;
+    updateLayerButton();
 
     state.scene = loadScene(state.manifest, state.payload, entry.group, entry.name);
     events.emit('scene:loaded');

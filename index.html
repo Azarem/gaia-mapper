@@ -14,17 +14,14 @@
         <option value="">Loading payload...</option>
       </select>
     </div>
-    <div class="toolbar-group">
-      <button id="btn-layer" class="mode-btn" title="Toggle Layer 1 / Layer 2">Layer 1</button>
+    <div class="toolbar-group" style="position:relative">
+      <button id="btn-layer" class="mode-btn dropdown-trigger" title="Scene assets">Layer 1 &#x25BE;</button>
+      <div id="asset-dropdown" class="asset-dropdown"></div>
       <button id="btn-grid" class="mode-btn" title="Toggle grid overlay">Grid</button>
     </div>
     <div class="toolbar-group">
-      <button id="btn-undo" title="Undo (Ctrl+Z)" disabled>&#x21B6; Undo</button>
-      <button id="btn-redo" title="Redo (Ctrl+Y)" disabled>&#x21B7; Redo</button>
-    </div>
-    <div class="toolbar-group">
-      <button id="btn-import-gfx" title="Import raw graphics into VRAM">Import GFX</button>
-      <button id="btn-export" title="Export current asset">Export</button>
+      <button id="btn-undo" title="Undo (Ctrl+Z)" disabled>&#x21B6;</button>
+      <button id="btn-redo" title="Redo (Ctrl+Y)" disabled>&#x21B7;</button>
     </div>
   </header>
 
@@ -72,7 +69,7 @@
     <span id="status-info">Ready</span>
   </footer>
 
-  <input type="file" id="file-import-gfx" accept=".bin" style="display:none">
+  <input type="file" id="file-import" accept="*" style="display:none">
 
   <script src="dist/app.iife.js"></script>
 </body>

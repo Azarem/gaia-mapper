@@ -37,23 +37,31 @@ export function parseManifest(data: Uint8Array): PayloadManifest {
 
 /**
  * Build a flat list of all scenes for the selector dropdown.
+ * Scenes are grouped together, sorted by ID within each group,
+ * and groups are ordered by their lowest scene ID.
  */
 export function getSceneList(manifest: PayloadManifest): SceneEntry[] {
-  const scenes: SceneEntry[] = [];
+  const grouped = new Map<string, SceneEntry[]>();
 
   for (const [groupName, group] of Object.entries(manifest.groups)) {
+    const entries: SceneEntry[] = [];
     for (const [sceneName, scene] of Object.entries(group.scenes)) {
-      scenes.push({
+      entries.push({
         group: groupName,
         name: sceneName,
         id: scene.id,
         description: scene.description,
       });
     }
+    entries.sort((a, b) => a.id - b.id);
+    grouped.set(groupName, entries);
   }
 
-  scenes.sort((a, b) => a.id - b.id);
-  return scenes;
+  const sortedGroups = [...grouped.entries()].sort(
+    ([, a], [, b]) => a[0].id - b[0].id,
+  );
+
+  return sortedGroups.flatMap(([, entries]) => entries);
 }
 
 /**

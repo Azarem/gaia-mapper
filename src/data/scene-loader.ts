@@ -1,8 +1,19 @@
 import { VirtualVRAM } from '../core/vram';
 import { PaletteState } from '../core/palette';
 import { TilesetRenderer } from '../core/tileset';
-import { TilemapManager } from '../core/tilemap';
+import { TilemapManager, serializeTilemap } from '../core/tilemap';
 import type { PayloadManifest, AssetEntry, SceneDef } from './manifest';
+
+export type LoadedAssetType = 'tilemap' | 'tileset' | 'bitmap' | 'palette';
+
+export interface LoadedAsset {
+  type: LoadedAssetType;
+  filename: string;
+  resolvedKey: string;
+  extension: string;
+  layer: number;
+  meta: Record<string, number | boolean>;
+}
 
 export interface SceneState {
   vram: VirtualVRAM;
@@ -11,29 +22,37 @@ export interface SceneState {
   effectTileset: TilesetRenderer;
   mainTilemap: TilemapManager;
   effectTilemap: TilemapManager;
+  loadedAssets: LoadedAsset[];
 }
 
 const EXTENSIONS = ['.bin', '.pal', '.set', '.map', '.sprite.asm', ''];
 
-function resolveFile(payload: Map<string, Uint8Array>, filename: string): Uint8Array {
-  const direct = payload.get(filename);
-  if (direct) return direct;
+const ASSET_EXT: Record<LoadedAssetType, string> = {
+  tilemap: '.map',
+  tileset: '.set',
+  bitmap: '.bin',
+  palette: '.pal',
+};
 
+function resolveFileKey(payload: Map<string, Uint8Array>, filename: string): string {
+  if (payload.has(filename)) return filename;
   for (const ext of EXTENSIONS) {
     const withExt = filename + ext;
-    const hit = payload.get(withExt);
-    if (hit) return hit;
+    if (payload.has(withExt)) return withExt;
   }
-
-  for (const [key, data] of payload) {
+  for (const [key] of payload) {
     const basename = key.replace(/^.*\//, '');
-    if (basename === filename) return data;
+    if (basename === filename) return key;
     for (const ext of EXTENSIONS) {
-      if (basename === filename + ext) return data;
+      if (basename === filename + ext) return key;
     }
   }
-
   throw new Error(`Asset not found in payload: ${filename}`);
+}
+
+function resolveFile(payload: Map<string, Uint8Array>, filename: string): Uint8Array {
+  const key = resolveFileKey(payload, filename);
+  return payload.get(key)!;
 }
 
 interface LabelRef {
@@ -86,6 +105,7 @@ export function loadScene(
     effectTileset: new TilesetRenderer(),
     mainTilemap: new TilemapManager(),
     effectTilemap: new TilemapManager(),
+    loadedAssets: [],
   };
 
   const labelIndex = getLabelIndex(manifest);
@@ -147,6 +167,14 @@ function executeAssetCommand(
         asset.meta.dstOffset as number,
         asset.meta.isSprite as boolean,
       );
+      state.loadedAssets.push({
+        type: 'bitmap',
+        filename: asset.data!,
+        resolvedKey: resolveFileKey(payload, asset.data!),
+        extension: ASSET_EXT.bitmap,
+        layer: 0,
+        meta: { ...asset.meta },
+      });
       break;
     }
 
@@ -158,6 +186,14 @@ function executeAssetCommand(
         asset.meta.sizeW as number,
         asset.meta.dstOffset as number,
       );
+      state.loadedAssets.push({
+        type: 'palette',
+        filename: asset.data!,
+        resolvedKey: resolveFileKey(payload, asset.data!),
+        extension: ASSET_EXT.palette,
+        layer: 0,
+        meta: { ...asset.meta },
+      });
       break;
     }
 
@@ -180,6 +216,14 @@ function executeAssetCommand(
           asset.meta.dstOffset as number,
         );
       }
+      state.loadedAssets.push({
+        type: 'tileset',
+        filename: asset.data!,
+        resolvedKey: resolveFileKey(payload, asset.data!),
+        extension: ASSET_EXT.tileset,
+        layer,
+        meta: { ...asset.meta },
+      });
       break;
     }
 
@@ -188,6 +232,14 @@ function executeAssetCommand(
       const layer = asset.meta.layer as number;
       if (layer & 1) state.mainTilemap.load(data);
       if (layer & 2) state.effectTilemap.load(data);
+      state.loadedAssets.push({
+        type: 'tilemap',
+        filename: asset.data!,
+        resolvedKey: resolveFileKey(payload, asset.data!),
+        extension: ASSET_EXT.tilemap,
+        layer,
+        meta: { ...asset.meta },
+      });
       break;
     }
 
@@ -199,5 +251,113 @@ function executeAssetCommand(
     case 'spritemap':
     case 'music':
       break;
+  }
+}
+
+export function importAssetData(scene: SceneState, asset: LoadedAsset, fileData: Uint8Array): void {
+  switch (asset.type) {
+    case 'tilemap': {
+      const layer = asset.layer;
+      if (layer & 1) scene.mainTilemap.load(fileData);
+      if (layer & 2) scene.effectTilemap.load(fileData);
+      break;
+    }
+    case 'tileset': {
+      const layer = asset.layer;
+      if (layer & 1) {
+        scene.mainTileset.loadTileset(
+          fileData,
+          asset.meta.srcOffset as number,
+          asset.meta.sizeW as number,
+          asset.meta.dstOffset as number,
+        );
+      }
+      if (layer & 2) {
+        scene.effectTileset.loadTileset(
+          fileData,
+          asset.meta.srcOffset as number,
+          asset.meta.sizeW as number,
+          asset.meta.dstOffset as number,
+        );
+      }
+      break;
+    }
+    case 'bitmap':
+      scene.vram.loadBitmap(
+        fileData,
+        asset.meta.srcOffset as number,
+        asset.meta.sizeW as number,
+        asset.meta.dstOffset as number,
+        asset.meta.isSprite as boolean,
+      );
+      break;
+    case 'palette':
+      scene.palette.loadPalette(
+        fileData,
+        asset.meta.srcOffset as number,
+        asset.meta.sizeW as number,
+        asset.meta.dstOffset as number,
+      );
+      scene.palette.invalidateCache();
+      break;
+  }
+}
+
+export function exportAssetData(
+  scene: SceneState,
+  asset: LoadedAsset,
+  payload: Map<string, Uint8Array>,
+): Uint8Array | null {
+  switch (asset.type) {
+    case 'tilemap': {
+      const tm = (asset.layer & 1) ? scene.mainTilemap : scene.effectTilemap;
+      if (!tm.tilemap) return null;
+      return serializeTilemap(tm.tilemap);
+    }
+    case 'tileset': {
+      const ts = (asset.layer & 1) ? scene.mainTileset : scene.effectTileset;
+      const original = payload.get(asset.resolvedKey);
+      if (!original) return null;
+      const output = new Uint8Array(original);
+      const srcStart = (asset.meta.srcOffset as number) << 2;
+      const size = ((asset.meta.sizeW as number) << 6) - srcStart;
+      const dstStart = (asset.meta.dstOffset as number) << 2;
+      for (let i = 0; i < size; i++) {
+        if (srcStart + i < output.length && dstStart + i < ts.data.length) {
+          output[srcStart + i] = ts.data[dstStart + i];
+        }
+      }
+      return output;
+    }
+    case 'bitmap': {
+      const original = payload.get(asset.resolvedKey);
+      if (!original) return null;
+      const output = new Uint8Array(original);
+      const isSprite = asset.meta.isSprite as boolean;
+      const srcStart = (asset.meta.srcOffset as number) << 9;
+      const size = ((asset.meta.sizeW as number) - (asset.meta.srcOffset as number)) << 9;
+      const dstStart = ((asset.meta.dstOffset as number) << 9)
+        + (isSprite ? VirtualVRAM.SPRITE_BASE : VirtualVRAM.BG_BASE);
+      for (let i = 0; i < size; i++) {
+        if (srcStart + i < output.length && dstStart + i < scene.vram.data.length) {
+          output[srcStart + i] = scene.vram.data[dstStart + i];
+        }
+      }
+      return output;
+    }
+    case 'palette': {
+      const original = payload.get(asset.resolvedKey);
+      if (!original) return null;
+      const output = new Uint8Array(original);
+      const srcStart = (asset.meta.srcOffset as number) << 1;
+      const size = ((asset.meta.sizeW as number) << 1) - srcStart;
+      const dstStart = (asset.meta.dstOffset as number) << 1;
+      for (let i = 0; i < size; i++) {
+        if (srcStart + i < output.length && dstStart + i < scene.palette.cgram.length) {
+          output[srcStart + i] = scene.palette.cgram[dstStart + i];
+        }
+      }
+      return output;
+    }
   }
 }

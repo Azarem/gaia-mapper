@@ -5,7 +5,7 @@ export interface CanvasViewOptions {
   minZoom?: number;
   maxZoom?: number;
   onHover?: (x: number, y: number) => void;
-  onClick?: (x: number, y: number, button: number) => void;
+  onClick?: (x: number, y: number, button: number, ctrlKey: boolean) => void;
   onDraw?: (ctx: CanvasRenderingContext2D, zoom: number) => void;
   onDragEnd?: () => void;
 }
@@ -138,13 +138,13 @@ export class CanvasView {
       e.preventDefault();
       return;
     }
-    if (e.button === 0) {
+    if (e.button === 0 && !e.ctrlKey) {
       this.isLeftDragging = true;
     }
     if (this.opts.onClick) {
       const rect = this.canvas.getBoundingClientRect();
       const { x, y } = this.screenToContent(e.clientX - rect.left, e.clientY - rect.top);
-      this.opts.onClick(x, y, e.button);
+      this.opts.onClick(x, y, e.button, e.ctrlKey);
     }
   };
 
@@ -164,10 +164,10 @@ export class CanvasView {
       this.opts.onHover(x, y);
     }
 
-    if (this.opts.onClick && (e.buttons & 1)) {
+    if (this.opts.onClick && (e.buttons & 1) && !this.isPanning) {
       const rect = this.canvas.getBoundingClientRect();
       const { x, y } = this.screenToContent(e.clientX - rect.left, e.clientY - rect.top);
-      this.opts.onClick(x, y, 0);
+      this.opts.onClick(x, y, 0, e.ctrlKey);
     }
   };
 
