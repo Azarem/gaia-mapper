@@ -48,12 +48,14 @@ A tileset is 2048 bytes (`TILESET_SIZE = 0x800`) containing 1024 16-bit entries.
 
 | Bits | Mask | Field |
 |------|------|-------|
-| 0-8 | `0x01FF` | VRAM tile index (0-511) |
-| 9 | `0x0200` | Page/block flag |
+| 0-8 | `0x01FF` | VRAM tile index (0-511, spans both BG pages) |
+| 9 | `0x0200` | Block flag (collision — prevents actor passage) |
 | 10-12 | `0x1C00` | Palette index (0-7) |
 | 13 | `0x2000` | Priority |
 | 14 | `0x4000` | Horizontal mirror |
 | 15 | `0x8000` | Vertical mirror |
+
+> **Note on tile page selection:** The 9-bit tile index (bits 0-8) inherently spans both BG VRAM pages: indices 0-255 address page 0 (`$4000-$5FFF`), indices 256-511 address page 1 (`$6000-$7FFF`). Page selection is *not* controlled by bit 9 — that bit is the block/collision flag. For layer 2, the game engine (via `sub_028FCD`) may OR `$0100` into all tileset entries based on PPU table configuration, shifting tile lookups to page 1. The mapper mirrors this with `TilesetRenderer.useOffset`.
 
 **Loading** uses 4-byte source units and 64-byte size units (matching scene_meta opcode 0x05).
 
