@@ -13,6 +13,10 @@ import { TilemapEditor, type TileChange } from './editor/tilemap-editor';
 import { GfxViewer } from './editor/gfx-viewer';
 import { PaletteViewer } from './editor/palette-viewer';
 import { SceneSelector } from './editor/scene-selector';
+import {
+  resizeTilemap, type TilemapAnchor, type TilemapState,
+  TILEMAP_MAX_BLOCKS,
+} from './core/tilemap';
 
 const PAYLOAD_URL = 'payload.zip';
 
@@ -228,6 +232,7 @@ async function init(): Promise<void> {
   const layerBtn = $('btn-layer') as HTMLButtonElement;
   const dropdown = $('asset-dropdown') as HTMLDivElement;
   const fileInput = $('file-import') as HTMLInputElement;
+  const resizeDropdown = $('resize-dropdown') as HTMLDivElement;
 
   function updateLayerButton(): void {
     layerBtn.innerHTML = `Layer ${state.activeLayer} &#x25BE;`;
@@ -300,6 +305,7 @@ async function init(): Promise<void> {
 
   layerBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    resizeDropdown.classList.remove('open');
     const isOpen = dropdown.classList.contains('open');
     if (isOpen) {
       closeDropdown();
@@ -395,6 +401,164 @@ async function init(): Promise<void> {
     tilesetEditor.refreshPicker();
     gfxViewer.refresh();
   });
+
+  // --- Resize tilemap ---
+
+  const resizeBtn = $('btn-resize') as HTMLButtonElement;
+  const resizeWidthInput = $('resize-width') as HTMLInputElement;
+  const resizeHeightInput = $('resize-height') as HTMLInputElement;
+  const resizeAnchorGrid = $('resize-anchor') as HTMLDivElement;
+  const resizeInfo = $('resize-info') as HTMLDivElement;
+  const resizeConfirmBtn = $('resize-confirm') as HTMLButtonElement;
+  const resizeCancelBtn = $('resize-cancel') as HTMLButtonElement;
+
+  let currentAnchor: TilemapAnchor = 'top-right';
+
+  function openResizeDropdown(): void {
+    const tm = tilemapEditor.tilemapManager?.tilemap;
+    if (!tm) {
+      events.emit('status:info', 'No tilemap loaded');
+      return;
+    }
+    resizeWidthInput.value = String(tm.width);
+    resizeHeightInput.value = String(tm.height);
+    updateResizeInfo();
+    resizeDropdown.classList.add('open');
+  }
+
+  function closeResizeDropdown(): void {
+    resizeDropdown.classList.remove('open');
+  }
+
+  function updateResizeInfo(): void {
+    const w = parseInt(resizeWidthInput.value, 10) || 0;
+    const h = parseInt(resizeHeightInput.value, 10) || 0;
+    const total = w * h;
+
+    if (w < 1 || h < 1) {
+      resizeInfo.textContent = 'Width and height must be at least 1';
+      resizeInfo.className = 'resize-info error';
+      resizeConfirmBtn.disabled = true;
+    } else if (total > TILEMAP_MAX_BLOCKS) {
+      resizeInfo.textContent = `${w}\u00d7${h} = ${total} blocks (max ${TILEMAP_MAX_BLOCKS})`;
+      resizeInfo.className = 'resize-info error';
+      resizeConfirmBtn.disabled = true;
+    } else {
+      resizeInfo.textContent = `${w}\u00d7${h} = ${total} blocks (max ${TILEMAP_MAX_BLOCKS})`;
+      resizeInfo.className = 'resize-info';
+      resizeConfirmBtn.disabled = false;
+    }
+  }
+
+  resizeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeDropdown();
+    if (resizeDropdown.classList.contains('open')) {
+      closeResizeDropdown();
+    } else {
+      openResizeDropdown();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!resizeDropdown.contains(e.target as Node) && !resizeBtn.contains(e.target as Node)) {
+      closeResizeDropdown();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && resizeDropdown.classList.contains('open')) {
+      closeResizeDropdown();
+    }
+  });
+
+  resizeAnchorGrid.addEventListener('click', (e) => {
+    const cell = (e.target as HTMLElement).closest('.anchor-cell') as HTMLElement | null;
+    if (!cell) return;
+    resizeAnchorGrid.querySelector('.anchor-cell.active')?.classList.remove('active');
+    cell.classList.add('active');
+    currentAnchor = cell.dataset.anchor as TilemapAnchor;
+  });
+
+  resizeWidthInput.addEventListener('input', updateResizeInfo);
+  resizeHeightInput.addEventListener('input', updateResizeInfo);
+
+  resizeCancelBtn.addEventListener('click', closeResizeDropdown);
+
+  resizeConfirmBtn.addEventListener('click', () => {
+    const tm = tilemapEditor.tilemapManager?.tilemap;
+    if (!tm) return;
+
+    const newWidth = parseInt(resizeWidthInput.value, 10);
+    const newHeight = parseInt(resizeHeightInput.value, 10);
+
+    if (newWidth < 1 || newHeight < 1 || newWidth * newHeight > TILEMAP_MAX_BLOCKS) return;
+    if (newWidth === tm.width && newHeight === tm.height) {
+      closeResizeDropdown();
+      return;
+    }
+
+    const oldSnapshot: TilemapState = {
+      width: tm.width,
+      height: tm.height,
+      data: new Uint8Array(tm.data),
+    };
+
+    const newState = resizeTilemap(oldSnapshot, newWidth, newHeight, currentAnchor);
+    tilemapEditor.tilemapManager!.tilemap = newState;
+
+    const targetLayer = state.activeLayer;
+    history.push(makeResizeAction(targetLayer, oldSnapshot, {
+      width: newState.width,
+      height: newState.height,
+      data: new Uint8Array(newState.data),
+    }));
+    updateUndoRedoButtons();
+
+    tilemapEditor.refresh();
+    refreshMainView();
+    closeResizeDropdown();
+    events.emit('status:info', `Resized tilemap to ${newWidth}\u00d7${newHeight}`);
+  });
+
+  function makeResizeAction(
+    targetLayer: 1 | 2,
+    oldSnap: TilemapState,
+    newSnap: TilemapState,
+  ): UndoAction {
+    function getManager() {
+      return targetLayer === 2
+        ? state.scene?.effectTilemap
+        : state.scene?.mainTilemap;
+    }
+    return {
+      description: `Resize to ${newSnap.width}\u00d7${newSnap.height}`,
+      undo() {
+        const mgr = getManager();
+        if (mgr) {
+          mgr.tilemap = {
+            width: oldSnap.width,
+            height: oldSnap.height,
+            data: new Uint8Array(oldSnap.data),
+          };
+        }
+        tilemapEditor.refresh();
+        refreshMainView();
+      },
+      redo() {
+        const mgr = getManager();
+        if (mgr) {
+          mgr.tilemap = {
+            width: newSnap.width,
+            height: newSnap.height,
+            data: new Uint8Array(newSnap.data),
+          };
+        }
+        tilemapEditor.refresh();
+        refreshMainView();
+      },
+    };
+  }
 
   // Property controls
   const propHFlip = $('prop-hflip') as HTMLInputElement;

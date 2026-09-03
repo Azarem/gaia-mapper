@@ -306,6 +306,132 @@ button:active {
   text-align: center;
 }
 
+/* Resize dropdown */
+.dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.resize-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 200;
+  padding: 10px;
+  min-width: 180px;
+}
+
+.resize-dropdown.open {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resize-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.resize-field label {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 42px;
+}
+
+.resize-field input[type="number"] {
+  width: 56px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.resize-field input[type="number"]:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.anchor-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 18px);
+  grid-template-rows: repeat(3, 18px);
+  gap: 2px;
+}
+
+.anchor-cell {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.anchor-cell:hover {
+  border-color: var(--accent-dim);
+}
+
+.anchor-cell.active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.resize-info {
+  font-size: 11px;
+  color: var(--text-dim);
+  min-height: 14px;
+}
+
+.resize-info.error {
+  color: var(--danger);
+}
+
+.resize-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.resize-btn {
+  padding: 4px 12px;
+  font-size: 11px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.resize-btn:hover {
+  border-color: var(--accent-dim);
+}
+
+.resize-btn.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.resize-btn.primary:hover {
+  background: var(--accent);
+}
+
+.resize-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

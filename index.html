@@ -18,6 +18,38 @@
       <button id="btn-layer" class="mode-btn dropdown-trigger" title="Scene assets">Layer 1 &#x25BE;</button>
       <div id="asset-dropdown" class="asset-dropdown"></div>
       <button id="btn-grid" class="mode-btn" title="Toggle grid overlay">Grid</button>
+      <span class="dropdown-wrap">
+        <button id="btn-resize" class="mode-btn" title="Resize tilemap"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="3" width="6" height="6" rx=".5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1"/><rect x="5" y="1" width="8" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+        <div id="resize-dropdown" class="resize-dropdown">
+          <div class="resize-field">
+            <label for="resize-width">Width</label>
+            <input type="number" id="resize-width" min="1" max="32" value="2">
+          </div>
+          <div class="resize-field">
+            <label for="resize-height">Height</label>
+            <input type="number" id="resize-height" min="1" max="32" value="2">
+          </div>
+          <div class="resize-field">
+            <label>Anchor</label>
+            <div id="resize-anchor" class="anchor-grid">
+              <button type="button" class="anchor-cell" data-anchor="top-left" title="Top Left"></button>
+              <button type="button" class="anchor-cell" data-anchor="top-center" title="Top Center"></button>
+              <button type="button" class="anchor-cell active" data-anchor="top-right" title="Top Right"></button>
+              <button type="button" class="anchor-cell" data-anchor="middle-left" title="Middle Left"></button>
+              <button type="button" class="anchor-cell" data-anchor="middle-center" title="Center"></button>
+              <button type="button" class="anchor-cell" data-anchor="middle-right" title="Middle Right"></button>
+              <button type="button" class="anchor-cell" data-anchor="bottom-left" title="Bottom Left"></button>
+              <button type="button" class="anchor-cell" data-anchor="bottom-center" title="Bottom Center"></button>
+              <button type="button" class="anchor-cell" data-anchor="bottom-right" title="Bottom Right"></button>
+            </div>
+          </div>
+          <div class="resize-info" id="resize-info"></div>
+          <div class="resize-actions">
+            <button type="button" id="resize-cancel" class="resize-btn">Cancel</button>
+            <button type="button" id="resize-confirm" class="resize-btn primary">Resize</button>
+          </div>
+        </div>
+      </span>
     </div>
     <div class="toolbar-group">
       <button id="btn-undo" title="Undo (Ctrl+Z)" disabled>&#x21B6;</button>

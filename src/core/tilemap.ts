@@ -37,6 +37,46 @@ export function serializeTilemap(tilemap: TilemapState): Uint8Array {
   return out;
 }
 
+export type TilemapAnchor =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'middle-left' | 'middle-center' | 'middle-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right';
+
+export const TILEMAP_MAX_BLOCKS = TILEMAP_MAX_DATA / TILEMAP_BLOCK_SIZE;
+
+export function resizeTilemap(
+  src: TilemapState,
+  newWidth: number,
+  newHeight: number,
+  anchor: TilemapAnchor,
+): TilemapState {
+  let offsetX: number;
+  let offsetY: number;
+
+  if (anchor.endsWith('left')) offsetX = 0;
+  else if (anchor.endsWith('right')) offsetX = newWidth - src.width;
+  else offsetX = Math.floor((newWidth - src.width) / 2);
+
+  if (anchor.startsWith('top')) offsetY = 0;
+  else if (anchor.startsWith('bottom')) offsetY = newHeight - src.height;
+  else offsetY = Math.floor((newHeight - src.height) / 2);
+
+  const data = new Uint8Array(TILEMAP_MAX_DATA);
+
+  for (let by = 0; by < src.height; by++) {
+    for (let bx = 0; bx < src.width; bx++) {
+      const nx = bx + offsetX;
+      const ny = by + offsetY;
+      if (nx < 0 || nx >= newWidth || ny < 0 || ny >= newHeight) continue;
+      const srcOff = (by * src.width + bx) * TILEMAP_BLOCK_SIZE;
+      const dstOff = (ny * newWidth + nx) * TILEMAP_BLOCK_SIZE;
+      data.set(src.data.subarray(srcOff, srcOff + TILEMAP_BLOCK_SIZE), dstOff);
+    }
+  }
+
+  return { width: newWidth, height: newHeight, data };
+}
+
 /**
  * Render the full tilemap by compositing metatile regions from a pre-rendered tileset bitmap.
  * Port of ControlTest.ReloadTilemap().
