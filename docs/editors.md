@@ -8,7 +8,7 @@ The UI is a three-panel layout:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Toolbar: [Scene ▾]  [Layer 1] [Grid]  [⟲ Undo] [⟳ Redo]  [Import GFX] [Export]  │
+│  Toolbar: [Scene ▾]  [Layer 1 ▾] [Grid] [⊞ Resize]  [⟲] [⟳]  │
 ├──────────┬───────────────────────────┬───────────────────┤
 │ Left     │ Main                      │ Right             │
 │          │                           │                   │
@@ -37,18 +37,20 @@ The main canvas shows the full tilemap composed from the active layer's tileset.
 | Input | Action |
 |-------|--------|
 | Left-click + drag | Stamp selected metatile onto map cells |
+| Ctrl + left-click | Dropper/eyedropper mode — picks the metatile at cursor (same as right-click) |
 | Right-click | Pick metatile at cursor position → selects metatile + quadrant in tileset |
 | Mouse wheel | Zoom in/out (through CanvasView) |
 | Middle-click + drag | Pan the viewport (through CanvasView) |
+| Shift + left-click + drag | Pan the viewport (alternative) |
 | Hover | Yellow highlight box (16×16) follows cursor; coordinates shown in status bar |
+
+**Ctrl dropper mode:** Holding Ctrl changes the cursor to `copy` as visual feedback. Ctrl+left-click is remapped to button 2 (dropper) in `index.ts`, so `TilemapEditor.onClick` runs its pick/eyedropper logic. Ctrl+left-drag does *not* start a stamp batch — `isLeftDragging` is suppressed when `ctrlKey` is true.
 
 **Stamp batching:** Left-click drag accumulates `TileChange` records (`{ blockX, blockY, cellX, cellY, oldValue, newValue }`). Duplicate coordinates within a drag are deduplicated. On mouse-up, `commitStampBatch()` returns the batch for the undo system.
 
 **Right-click pick:** Determines the metatile index AND the 8×8 quadrant (0-3) under the cursor within the 16×16 metatile. Sets `state.selectedMetatile` and `state.selectedQuad`, emits `tileset:selected`.
 
 **Overlay rendering:** Grid lines (when enabled, `rgba(255,255,255,0.25)`) and hover box (`rgba(255,255,0,0.6)`).
-
-**Export:** Serializes the active tilemap to binary format and triggers a browser download as `.map`.
 
 ## Tileset Editor (`tileset-editor.ts`)
 
@@ -99,21 +101,66 @@ Right panel showing 8 palette rows of 16 color swatches each.
 
 **Selection display:** Cyan outline on the selected row.
 
+## Asset Dropdown
+
+The "Layer" button in the toolbar doubles as an asset dropdown trigger. Clicking it reveals a panel listing all assets loaded for the current scene, grouped by type in the order: Tilemaps, Tilesets, Bitmaps, Palettes.
+
+Each asset entry shows:
+
+| Element | Description |
+|---------|-------------|
+| Type icon | Colored inline SVG (blue grid for tilemap, green grid for tileset, orange frame for bitmap, purple circle for palette) |
+| Filename | The asset's manifest data name + layer hint (e.g., `map_sc03 L1`) |
+| Edit button | Tilemaps only — pencil icon, switches the active layer to edit that tilemap |
+| Import button | Down-arrow icon — opens a file picker filtered by the asset's extension (`.map`, `.set`, `.bin`, `.pal`) |
+| Export button | Up-arrow icon — serializes the current in-memory data back to the native format and downloads it |
+
+**Edit:** Calls `switchLayer()` to change the active layer to whichever layer the tilemap belongs to (determined by its layer bitmask). Closes the dropdown and emits `status:info`.
+
+**Import:** Sets `fileInput.accept` to the asset's extension, then reads the selected file via `FileReader` and passes the raw bytes to `importAssetData()` in `scene-loader.ts`. This replays the original load operation with the stored meta offsets (source/destination offsets, size, flags). Emits `asset:imported` to trigger a full refresh.
+
+**Export:** Calls `exportAssetData()` in `scene-loader.ts`, which retrieves the original payload file, copies it, and overlays the modified in-memory data at the correct byte ranges. The result is downloaded with the resolved filename from the payload.
+
+**Mutual exclusion:** Opening the asset dropdown closes the resize dropdown (and vice versa). Clicking outside or pressing Escape closes either.
+
+**Layer reset on scene switch:** When a new scene is loaded, `state.activeLayer` is automatically reset to `1` and the button text is updated.
+
+## Tilemap Resize
+
+The resize button (SVG icon showing a dashed old rectangle + solid new rectangle) opens a dropdown panel with:
+
+| Control | Description |
+|---------|-------------|
+| Width input | Number input (min 1), pre-populated with current tilemap width in blocks |
+| Height input | Number input (min 1), pre-populated with current tilemap height in blocks |
+| Anchor grid | 3×3 grid of selectable cells (default: top-right) controlling where existing content is anchored within the new dimensions |
+| Info text | Shows block count (e.g., `2×3 = 6 blocks (max 32)`) — turns red if constraints are violated |
+| Cancel/Resize buttons | Cancel closes the dropdown; Resize applies the operation |
+
+**Anchor positions:** `top-left`, `top-center`, `top-right`, `middle-left`, `middle-center`, `middle-right`, `bottom-left`, `bottom-center`, `bottom-right`. The anchor determines where the existing tile data is placed within the resized tilemap. For example, `top-right` keeps existing content pinned to the top-right corner while the map expands left and/or downward.
+
+**Constraints:** `width × height` must not exceed `TILEMAP_MAX_BLOCKS` (32 blocks = 8192 bytes / 256 bytes per block). The Resize button is disabled when constraints are violated.
+
+**Implementation:** `resizeTilemap()` in `src/core/tilemap.ts` computes horizontal and vertical block offsets from the anchor, creates a new `TILEMAP_MAX_DATA`-sized buffer, and copies each source block to its offset position in the destination. Blocks that fall outside the new dimensions are clipped.
+
+**Undo/redo:** `makeResizeAction()` captures the target layer and snapshots of both old and new tilemap state (`width`, `height`, `data` copy). Undo restores the old snapshot; redo re-applies the new one. Fresh `Uint8Array` copies are made on each invocation to prevent cross-contamination with subsequent edits.
+
 ## Scene Selector (`scene-selector.ts`)
 
-Toolbar dropdown populated from the manifest. Shows `ID - Description` for each scene, sorted by ID. On change, calls the registered callback to load the new scene.
+Toolbar dropdown populated from the manifest. Shows `ID - Description` for each scene, sorted by ID. On change, calls the registered callback to load the new scene. Loading a new scene resets the active layer to 1.
 
 ## CanvasView (`canvas-view.ts`)
 
 Shared base class for the main tilemap canvas. Provides:
 
-- **Pan:** Middle-click drag or right-click drag shifts the viewport offset
-- **Zoom:** Mouse wheel scales 0.5×–32× with scroll-position-anchored zoom
+- **Pan:** Middle-click drag or Shift+left-click drag shifts the viewport offset
+- **Zoom:** Mouse wheel scales 0.25×–32× with scroll-position-anchored zoom
 - **DPR scaling:** Canvas backing store resolution = CSS size × `devicePixelRatio`. The 2D context is pre-scaled by DPR so all drawing coordinates remain in CSS pixels
 - **Image smoothing:** Disabled on every `redraw()` call to enforce nearest-neighbor rendering
 - **Offscreen canvas:** `setImageData()` stores pixel data in an offscreen canvas for efficient `drawImage()` compositing. `refreshOffscreen()` updates pixels in-place without re-creating the offscreen canvas
-- **Callbacks:** `onHover`, `onClick`, `onDraw` (overlay), `onDragEnd` (stamp batch commit)
-- **Drag tracking:** Tracks left-button drag state for stamp batching
+- **Callbacks:** `onHover`, `onClick(x, y, button, ctrlKey)`, `onDraw` (overlay), `onDragEnd` (stamp batch commit)
+- **Drag tracking:** Tracks left-button drag state for stamp batching. Ctrl+left-click suppresses drag tracking (dropper mode)
+- **Ctrl modifier forwarding:** `ctrlKey` is passed through `onClick` so callers can remap the effective button (e.g., Ctrl+left → dropper)
 
 ## DPR / Crisp Rendering
 

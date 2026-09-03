@@ -75,3 +75,39 @@ Decisions made during development and the reasoning behind them.
 **Decision:** Split refresh into `refreshMainView()` (resets viewport) and `updateMainPixels()` (preserves viewport).
 
 **Background:** Assigning a VRAM tile to a tileset entry triggers `tileset:changed`, which needs to update the main canvas. But calling `fitToView()` on every tileset edit was resetting the user's carefully positioned viewport. The split allows pixel-level updates without disturbing pan/zoom.
+
+## Asset Dropdown (replacing Layer Toggle + Import/Export buttons)
+
+**Decision:** Merge the Layer toggle, Import GFX, and Export buttons into a single "Layer N" dropdown that lists all loaded scene assets grouped by type.
+
+**Alternatives considered:** Keeping separate import/export buttons per asset type; a file manager panel.
+
+**Rationale:** A scene can contain many assets (multiple bitmaps, palettes, tilesets, tilemaps) loaded through jump chains. The old "Import GFX" button only handled raw VRAM bitmap import, and "Export" only exported the active tilemap. The asset dropdown gives per-asset import/export with correct file type filtering, and tilemaps get an edit button to switch layers. This consolidates three buttons into one that scales with scene complexity.
+
+**Implementation:** During `loadScene()`, each `executeAssetCommand` call pushes a `LoadedAsset` entry (type, filename, resolved payload key, extension, layer bitmask, meta offsets) to `SceneState.loadedAssets`. The dropdown is rebuilt each time it opens, reading from this array. Import replays the original load with stored meta offsets; export reconstructs the original file by overlaying modified bytes.
+
+## Tilemap Resize with Anchor Grid
+
+**Decision:** Use a toolbar dropdown with width/height inputs and a 3×3 anchor selector. Default anchor is top-right.
+
+**Alternatives considered:** Modal dialog; resize handles on the tilemap itself; a menu command.
+
+**Rationale:** A dropdown keeps the resize control accessible without obscuring the tilemap. The 3×3 anchor grid is the standard UX pattern for resize alignment (used in Photoshop, Tiled, Aseprite). Top-right default was chosen because IOG maps typically expand southward (content is anchored to the top) and leftward (content starts at the right edge of the block grid).
+
+**Constraint:** `width × height ≤ 32` blocks (TILEMAP_MAX_DATA / TILEMAP_BLOCK_SIZE). The Resize button is disabled with an error message when the constraint is violated.
+
+## Ctrl+Click Dropper Mode
+
+**Decision:** Ctrl+left-click acts as the eyedropper (same as right-click pick) on the tilemap canvas.
+
+**Alternatives considered:** Dedicated tool button in toolbar; keyboard shortcut to toggle mode.
+
+**Rationale:** Ctrl+click is the standard modifier-based dropper shortcut in pixel editors (Photoshop, Aseprite, GIMP). It allows single-hand dropper access without switching tools. The `ctrlKey` boolean is forwarded through `CanvasView.onClick` and remapped to button 2 in the tilemap handler. Visual feedback: the cursor changes to `copy` while Ctrl is held.
+
+**Drag suppression:** Ctrl+left-click does not start a stamp drag (`isLeftDragging` stays false when `ctrlKey` is true), preventing accidental tile stamping during dropper use.
+
+## Layer Reset on Scene Switch
+
+**Decision:** Automatically reset `activeLayer` to 1 when loading a new scene.
+
+**Rationale:** Users were sometimes confused when switching scenes while on layer 2 — the new scene's effect layer might be empty or look wrong. Resetting to layer 1 ensures the most common view (main tilemap) is shown first. The layer button text is updated immediately before the scene loads.

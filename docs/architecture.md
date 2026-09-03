@@ -39,14 +39,14 @@ gaia-mapper/
 │   │   ├── palette.ts            # CGRAM (512 bytes), BGR555→RGBA8 conversion
 │   │   ├── tile-decoder.ts       # 4bpp planar tile decode + render to RGBA
 │   │   ├── tileset.ts            # Tileset entries (16-bit words), metatile rendering
-│   │   ├── tilemap.ts            # Tilemap parse/serialize/render, block coordinate math
+│   │   ├── tilemap.ts            # Tilemap parse/serialize/resize/render, block coordinate math
 │   │   └── sprite.ts             # Sprite format types (Phase 3 placeholder)
 │   ├── data/                     # Asset loading pipeline
 │   │   ├── payload.ts            # Fetch ZIP, IndexedDB cache, fflate unzip
 │   │   ├── manifest.ts           # Parse manifest.json, scene list builder
-│   │   └── scene-loader.ts       # Execute asset commands, jump/label resolution
+│   │   └── scene-loader.ts       # Execute asset commands, jump/label resolution, import/export
 │   ├── editor/                   # Interactive editors (DOM + Canvas)
-│   │   ├── tilemap-editor.ts     # Main view: stamp, pick, hover, drag batching
+│   │   ├── tilemap-editor.ts     # Main view: stamp, pick/dropper, hover, drag batching
 │   │   ├── tileset-editor.ts     # Left panel: picker, subtile selection, properties
 │   │   ├── gfx-viewer.ts         # Right panel: raw VRAM tile grid
 │   │   ├── palette-viewer.ts     # Right panel: 8-row palette swatches
@@ -89,6 +89,13 @@ scene selector ──pick──> loadScene() ───────────�
                       redraw() with DPR scaling
 ```
 
+### Asset Import/Export
+
+Individual assets can be replaced at runtime (import) or saved to disk (export) via the asset dropdown. The flow lives in `scene-loader.ts`:
+
+- **Import** (`importAssetData`): Reads a replacement file, replays the original load operation with the same meta offsets, and emits `asset:imported` to trigger a full refresh.
+- **Export** (`exportAssetData`): Copies the original payload file, overlays the modified in-memory data at the correct byte range, and returns a `Uint8Array` for download. Tilemaps are serialized directly via `serializeTilemap()`.
+
 ## Event Bus
 
 All inter-component communication goes through a typed event bus (`src/ui/events.ts`):
@@ -101,9 +108,9 @@ All inter-component communication goes through a typed event bus (`src/ui/events
 | `tileset:selected` | `{ metatileIndex, quadIndex }` | Click on tileset picker or right-click tilemap |
 | `palette:selected` | `{ paletteIndex }` | Click on palette row |
 | `gfx:selected` | `{ tileIndex }` | Click on VRAM tile |
-| `layer:changed` | `{ layer: 1 \| 2 }` | Layer toggle button |
+| `layer:changed` | `{ layer: 1 \| 2 }` | Layer switch via asset dropdown edit button |
 | `grid:toggled` | `{ enabled }` | Grid toggle button |
-| `vram:imported` | void | Raw GFX file imported |
+| `asset:imported` | void | Any asset file imported via asset dropdown |
 | `status:coords` | string | Mouse hover coordinate text |
 | `status:info` | string | Status bar info text |
 
@@ -115,12 +122,12 @@ A single mutable `AppState` object is shared by reference across all editors:
 interface AppState {
   manifest: PayloadManifest | null;
   payload: Map<string, Uint8Array> | null;
-  scene: SceneState | null;
-  activeLayer: 1 | 2;
+  scene: SceneState | null;       // includes loadedAssets[] for the asset dropdown
+  activeLayer: 1 | 2;             // auto-reset to 1 on scene switch
   gridEnabled: boolean;
-  selectedMetatile: number;   // 0-255
-  selectedQuad: number;       // 0-3 (TL, TR, BL, BR)
-  selectedPalette: number;    // 0-7
-  selectedGfxTile: number;    // 0-511
+  selectedMetatile: number;       // 0-255
+  selectedQuad: number;           // 0-3 (TL, TR, BL, BR)
+  selectedPalette: number;        // 0-7
+  selectedGfxTile: number;        // 0-511
 }
 ```

@@ -36,7 +36,26 @@ Created when the user modifies a tileset entry: assigning a VRAM tile (click in 
 **Undo:** Writes `oldWord` back to the tileset data via `setEntryWord()`.
 **Redo:** Writes `newWord` back to the tileset data via `setEntryWord()`.
 
-Both action types trigger a view refresh after undo/redo to update the canvas.
+### Tilemap Resize Action
+
+Created when the user confirms a tilemap resize operation via the resize dropdown.
+
+**Data:** Two `TilemapState` snapshots — `oldSnap` (width, height, data copy before resize) and `newSnap` (width, height, data copy after resize). Also captures the `targetLayer` (1 or 2) at the time of the resize.
+
+```typescript
+interface TilemapState {
+  width: number;
+  height: number;
+  data: Uint8Array;   // fresh copy per snapshot
+}
+```
+
+**Undo:** Restores the old snapshot's width, height, and data (fresh `Uint8Array` copy) to the target layer's `TilemapManager`. Refreshes the tilemap editor and main view.
+**Redo:** Re-applies the new snapshot's width, height, and data (fresh `Uint8Array` copy) to the target layer's `TilemapManager`. Refreshes the tilemap editor and main view.
+
+The target layer is captured at resize time rather than using `state.activeLayer`, so undoing works correctly even if the user switches layers between the resize and the undo.
+
+All three action types trigger a view refresh after undo/redo to update the canvas.
 
 ## Controls
 
@@ -60,7 +79,8 @@ The `History` class in `src/ui/history.ts` is framework-agnostic:
 - `clear()` — empties both stacks
 
 Action factories live in `src/index.ts`:
-- `makeTilemapAction(changes: TileChange[])` — stamps
+- `makeTilemapAction(changes: TileChange[])` — stamp batches
 - `makeTilesetAction(entryIndex, oldWord, newWord)` — entry edits
+- `makeResizeAction(targetLayer, oldSnap, newSnap)` — tilemap resize
 
 Drag tracking is handled by `CanvasView.onDragEnd` callback, which fires on left-button mouseup. The tilemap editor's `commitStampBatch()` returns accumulated changes and resets the pending buffer.

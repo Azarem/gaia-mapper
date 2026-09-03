@@ -69,6 +69,22 @@ Width/height are in 256-pixel blocks. Each block is a 16×16 grid of metatile in
 
 **Coordinate system** (`pixelToCell`): Pixel → tile (÷16) → block (÷16) + cell (mod 16). Used for mouse hit-testing.
 
+### Tilemap Resize
+
+`resizeTilemap(src, newWidth, newHeight, anchor)` creates a new tilemap at the target dimensions, copying existing 256-byte blocks into their aligned positions based on the anchor. The anchor determines horizontal and vertical offsets:
+
+- **Horizontal:** `left` → offset 0, `right` → offset = newWidth - srcWidth, `center` → floor((newWidth - srcWidth) / 2)
+- **Vertical:** `top` → offset 0, `bottom` → offset = newHeight - srcHeight, `center` → floor((newHeight - srcHeight) / 2)
+
+Blocks that fall outside the new bounds are clipped. The maximum block count is `TILEMAP_MAX_BLOCKS = 32` (8192 / 256).
+
+The 9 anchor positions are defined as the `TilemapAnchor` type:
+```
+top-left    | top-center    | top-right
+middle-left | middle-center | middle-right
+bottom-left | bottom-center | bottom-right
+```
+
 ## Scene Loading (`scene-loader.ts`)
 
 Scenes are loaded by executing an ordered list of asset commands from the manifest, mirroring the game's scene_meta script execution.
@@ -112,12 +128,29 @@ The loaded scene holds all rendering state:
 
 ```typescript
 interface SceneState {
-  vram: VirtualVRAM;          // 64KB shared VRAM
-  palette: PaletteState;      // 512-byte shared CGRAM
+  vram: VirtualVRAM;               // 64KB shared VRAM
+  palette: PaletteState;           // 512-byte shared CGRAM
   mainTileset: TilesetRenderer;    // Layer 1 tileset (useOffset=false)
   effectTileset: TilesetRenderer;  // Layer 2 tileset (useOffset=true)
   mainTilemap: TilemapManager;     // Layer 1 tilemap
   effectTilemap: TilemapManager;   // Layer 2 tilemap
-  useOffset: boolean;              // Global offset toggle (legacy)
+  loadedAssets: LoadedAsset[];     // Tracked assets for the asset dropdown
 }
 ```
+
+### LoadedAsset Tracking
+
+Each asset loaded during `executeAssetCommand` is recorded in `loadedAssets`:
+
+```typescript
+interface LoadedAsset {
+  type: LoadedAssetType;               // 'tilemap' | 'tileset' | 'bitmap' | 'palette'
+  filename: string;                    // Manifest data name (e.g., "map_sc03")
+  resolvedKey: string;                 // Actual payload key (e.g., "map_sc03.map")
+  extension: string;                   // File extension for import/export filtering
+  layer: number;                       // Layer bitmask (0 for bitmap/palette, 1/2/3 for tileset/tilemap)
+  meta: Record<string, number | boolean>;  // Original load parameters (offsets, sizes, flags)
+}
+```
+
+This metadata enables round-trip import/export: `importAssetData()` replays the original load with stored offsets, and `exportAssetData()` reconstructs the native file format by overlaying modified data back into the original payload bytes.

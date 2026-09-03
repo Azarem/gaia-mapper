@@ -71,8 +71,9 @@ All graphics rendering uses the Canvas 2D API. No WebGL, no third-party renderin
 - **Sprites:** `src/core/sprite.ts` is a type-only placeholder. Sprite rendering and animation editing are Phase 3 features.
 - **PPU commands:** Scene asset commands of type `ppu` are read but not acted upon. The `useOffset` flag is set manually based on layer.
 - **Single game:** The payload builder is currently hardcoded for IOG structure. The manifest format is game-agnostic, but the builder script would need adaptation for Robotrek or Soul Blazer.
-- **No save/load project:** Edits exist only in memory. Export saves individual files. There is no project file format yet.
-- **Tilemap size:** Maximum 8192 bytes of tilemap data per layer (`TILEMAP_MAX_DATA = 0x2000`).
+- **No save/load project:** Edits exist only in memory. Export saves individual files via the asset dropdown. There is no project file format yet.
+- **Tilemap size:** Maximum 8192 bytes of tilemap data per layer (`TILEMAP_MAX_DATA = 0x2000`), which means `width × height ≤ 32` blocks.
+- **Import round-trip fidelity:** Import replays the original load with stored offsets, which works correctly for same-format replacements. Files with different internal layouts may produce unexpected results.
 
 ## Troubleshooting
 
@@ -88,7 +89,7 @@ If images look blurry, check that the DPR scaling chain is intact in both `Canva
 
 ### "Asset not found in payload"
 
-The `resolveFile()` function in `scene-loader.ts` tries appending extensions. If a file is genuinely missing, rebuild the payload and check the baserom's `extracted/` directory.
+The `resolveFileKey()` / `resolveFile()` functions in `scene-loader.ts` try appending extensions. If a file is genuinely missing, rebuild the payload and check the baserom's `extracted/` directory.
 
 ### Scene loads blank
 
