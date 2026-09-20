@@ -383,7 +383,7 @@ async function init(): Promise<void> {
     const reader = new FileReader();
     reader.onload = () => {
       const data = new Uint8Array(reader.result as ArrayBuffer);
-      importAssetData(state.scene!, asset, data);
+      importAssetData(state.scene!, asset, data, state.payload ?? undefined);
       events.emit('asset:imported');
       events.emit('status:info', `Imported ${file.name} as ${asset.type}`);
     };

@@ -254,7 +254,46 @@ function executeAssetCommand(
   }
 }
 
-export function importAssetData(scene: SceneState, asset: LoadedAsset, fileData: Uint8Array): void {
+/**
+ * Replay bitmap assets that follow `afterIndex` and whose VRAM destination
+ * overlaps with [rangeStart, rangeEnd). Used after an expanded bitmap import
+ * to restore data from subsequent scene loads (e.g. effect tiles in page 1).
+ */
+function replayOverlappingBitmaps(
+  scene: SceneState,
+  payload: Map<string, Uint8Array>,
+  afterIndex: number,
+  rangeStart: number,
+  rangeEnd: number,
+): void {
+  for (let i = afterIndex + 1; i < scene.loadedAssets.length; i++) {
+    const other = scene.loadedAssets[i];
+    if (other.type !== 'bitmap') continue;
+
+    const otherSrcOffset = other.meta.srcOffset as number;
+    const otherSizeW = other.meta.sizeW as number;
+    const otherDstOffset = other.meta.dstOffset as number;
+    const otherIsSprite = other.meta.isSprite as boolean;
+
+    const otherDstStart = (otherDstOffset << 9)
+      + (otherIsSprite ? VirtualVRAM.SPRITE_BASE : VirtualVRAM.BG_BASE);
+    const otherDstEnd = otherDstStart + ((otherSizeW - otherSrcOffset) << 9);
+
+    if (otherDstStart < rangeEnd && rangeStart < otherDstEnd) {
+      const otherData = payload.get(other.resolvedKey);
+      if (otherData) {
+        scene.vram.loadBitmap(otherData, otherSrcOffset, otherSizeW, otherDstOffset, otherIsSprite);
+      }
+    }
+  }
+}
+
+export function importAssetData(
+  scene: SceneState,
+  asset: LoadedAsset,
+  fileData: Uint8Array,
+  payload?: Map<string, Uint8Array>,
+): void {
   switch (asset.type) {
     case 'tilemap': {
       const layer = asset.layer;
@@ -282,15 +321,35 @@ export function importAssetData(scene: SceneState, asset: LoadedAsset, fileData:
       }
       break;
     }
-    case 'bitmap':
-      scene.vram.loadBitmap(
-        fileData,
-        asset.meta.srcOffset as number,
-        asset.meta.sizeW as number,
-        asset.meta.dstOffset as number,
-        asset.meta.isSprite as boolean,
+    case 'bitmap': {
+      const srcOffset = asset.meta.srcOffset as number;
+      const originalSizeW = asset.meta.sizeW as number;
+      const dstOffset = asset.meta.dstOffset as number;
+      const isSprite = asset.meta.isSprite as boolean;
+
+      const srcStartBytes = srcOffset << 9;
+      const fileDataSizeW = srcOffset + Math.floor(
+        Math.max(0, fileData.length - srcStartBytes) / 512,
       );
+
+      const maxSizeW = isSprite ? fileDataSizeW : srcOffset + (32 - dstOffset);
+      const effectiveSizeW = Math.max(originalSizeW, Math.min(fileDataSizeW, maxSizeW));
+
+      scene.vram.loadBitmap(fileData, srcOffset, effectiveSizeW, dstOffset, isSprite);
+
+      if (effectiveSizeW > originalSizeW && payload) {
+        const dstStart = (dstOffset << 9)
+          + (isSprite ? VirtualVRAM.SPRITE_BASE : VirtualVRAM.BG_BASE);
+        const dstEnd = dstStart + ((effectiveSizeW - srcOffset) << 9);
+        const importedIndex = scene.loadedAssets.indexOf(asset);
+        if (importedIndex >= 0) {
+          replayOverlappingBitmaps(scene, payload, importedIndex, dstStart, dstEnd);
+        }
+      }
+
+      asset.meta.sizeW = effectiveSizeW;
       break;
+    }
     case 'palette':
       scene.palette.loadPalette(
         fileData,
@@ -332,14 +391,16 @@ export function exportAssetData(
     case 'bitmap': {
       const original = payload.get(asset.resolvedKey);
       if (!original) return null;
-      const output = new Uint8Array(original);
       const isSprite = asset.meta.isSprite as boolean;
       const srcStart = (asset.meta.srcOffset as number) << 9;
       const size = ((asset.meta.sizeW as number) - (asset.meta.srcOffset as number)) << 9;
       const dstStart = ((asset.meta.dstOffset as number) << 9)
         + (isSprite ? VirtualVRAM.SPRITE_BASE : VirtualVRAM.BG_BASE);
+      const neededSize = srcStart + size;
+      const output = new Uint8Array(Math.max(original.length, neededSize));
+      output.set(original);
       for (let i = 0; i < size; i++) {
-        if (srcStart + i < output.length && dstStart + i < scene.vram.data.length) {
+        if (dstStart + i < scene.vram.data.length) {
           output[srcStart + i] = scene.vram.data[dstStart + i];
         }
       }

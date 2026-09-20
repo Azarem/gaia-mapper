@@ -10,33 +10,43 @@ The app loads a single `payload.zip` file that contains a `manifest.json` and al
 
 ```
 gaia-iog-baserom/
-├── us/groups.json       ← Scene definitions, asset lists
-├── us/files.json        ← File metadata (type, offsets)
-└── extracted/           ← Raw binary assets (.bin, .pal, .set, .map)
+├── db-us/groups.json                  ← Scene grouping structure (prefix, ids, descriptions)
+├── db-us/files.json                   ← File metadata (type, offsets)
+├── extracted/tables/scene_meta.asm    ← Per-scene asset commands (parsed from ROM)
+├── extracted/tables/display_preset_table.asm ← PPU display presets (effect offset flags)
+└── extracted/                         ← Raw binary assets (.bin, .pal, .set, .map)
          │
          ▼
     tsx scripts/build-payload.ts ../gaia-iog-baserom
          │
          ▼
-    payload.zip (~600KB compressed)
+    payload.zip (~850KB compressed)
     ├── manifest.json    ← Scene graph + asset commands
     ├── gfx_south_cape.bin
     ├── pal_sc03.pal
     ├── set_sc03.set
     ├── map_sc03.map
-    └── ... (~200 files)
+    └── ... (~600 files)
 ```
 
 ### `build-payload.ts`
 
-Reads `groups.json` (scene definitions) and `files.json` (file metadata) from the baserom's `us/` directory. For each referenced asset:
+Reads three data sources from the baserom:
+
+1. **`db-us/groups.json`** — Scene grouping structure (group names, prefixes, scene names/IDs/descriptions). Does NOT contain asset commands.
+2. **`extracted/tables/scene_meta.asm`** — Parsed to extract per-scene asset command lists. Each `scene_meta_XXXX` block is matched to a `groups.json` scene by its hex scene ID.
+3. **`db-us/files.json`** — File metadata (type, offsets) used to locate extracted binary files.
+
+Additionally, `extracted/tables/display_preset_table.asm` is parsed to extract PPU effect-offset flags (byte 4 bit 7 of each display preset), which are injected into `ppu` asset entries.
+
+For each referenced asset:
 
 1. Determines the file type (Bitmap, Palette, Tileset, Tilemap) from `files.json`
 2. Appends the appropriate extension (`.bin`, `.pal`, `.set`, `.map`)
 3. Locates the file in `extracted/{group}/{scene}/`
 4. Adds it to the ZIP archive with level 9 compression
 
-The manifest is the `groups.json` content wrapped with a `game` field.
+The manifest merges `groups.json` structure with parsed `scene_meta.asm` assets, wrapped with a `game` field.
 
 ### File Naming
 
@@ -90,7 +100,9 @@ interface AssetEntry {
 
 ### Asset Entry `meta` Fields
 
-**bitmap:** `{ srcOffset, sizeW, dstOffset, sprite }` — all in 512-byte units. `sprite=true` writes to sprite VRAM region.
+**ppu:** `{ index, effectOffset }` — PPU display preset index. `effectOffset=true` when byte 4 bit 7 is clear (layer 2 tiles shift to VRAM page 1).
+
+**bitmap:** `{ srcOffset, sizeW, dstOffset, isSprite }` — all in 512-byte units. `isSprite=true` writes to sprite VRAM region.
 
 **palette:** `{ srcOffset, sizeW, dstOffset }` — all in 2-byte units.
 
@@ -98,9 +110,24 @@ interface AssetEntry {
 
 **tilemap:** `{ layer }` — bitmask: 1=main, 2=effect.
 
-**label:** `{ label }` — integer label ID.
+**label:** `{ id }` — integer label ID (jump target declaration).
 
 **jump:** `{ label }` — integer label ID to jump to.
+
+### scene_meta.asm → AssetEntry Mapping
+
+| ASM Command | AssetEntry type | meta fields |
+|-------------|----------------|-------------|
+| `display-mode < #XX >` | `ppu` | `index` (+ injected `effectOffset`) |
+| `bitmap < #a, #b, #c, @file, #mode >` | `bitmap` | `srcOffset=a, sizeW=b, dstOffset=c, isSprite=(mode>0)` |
+| `palette < #a, #b, #c, @file >` | `palette` | `srcOffset=a, sizeW=b, dstOffset=c` |
+| `tileset < #a, #b, #c, #layer, @file >` | `tileset` | `srcOffset=a, sizeW=b, dstOffset=c, layer` |
+| `tilemap < #layer, @file >` | `tilemap` | `layer` |
+| `music < ... >` | `music` | `{}` |
+| `spritemap < #size, #flags, @file >` | `spritemap` | `{}` |
+| `meta_label_XX:` | `label` | `id=0xXX` |
+| `jump < #XX >` | `jump` | `label=0xXX` |
+| `branch`, `char-tiles`, `meta-skip` | *(skipped)* | — |
 
 ## Serving
 

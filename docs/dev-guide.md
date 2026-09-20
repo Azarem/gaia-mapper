@@ -20,7 +20,7 @@ The payload archive must be built from an extracted IOG baserom:
 npm run payload ../gaia-iog-baserom
 ```
 
-This reads `us/groups.json` and `us/files.json` from the baserom, collects binary assets from `extracted/`, and produces `payload.zip` in the project root.
+This reads `db-us/groups.json` (scene structure) and `db-us/files.json` (file metadata) from the baserom, parses `extracted/tables/scene_meta.asm` for per-scene asset commands, collects binary assets from `extracted/`, and produces `payload.zip` in the project root.
 
 The payload is gitignored. Each developer must build it locally.
 
@@ -118,7 +118,7 @@ Then reload the page.
 
 ## Adding Support for Another Game
 
-1. Create a new `build-payload.ts` variant (or parameterize the existing one) to read that game's `groups.json`/`files.json`
+1. Create a new `build-payload.ts` variant (or parameterize the existing one) to read that game's `db-us/groups.json`, `db-us/files.json`, and `extracted/tables/scene_meta.asm`
 2. Build the payload: `npm run payload ../gaia-robotrek-baserom`
 3. The manifest format and scene loader are game-agnostic as long as asset types and meta fields match
 4. If the game uses different VRAM layouts or tilemap formats, extend `vram.ts`/`tilemap.ts` accordingly
