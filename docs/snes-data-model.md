@@ -73,12 +73,12 @@ Width/height are in 256-pixel blocks. Each block is a 16×16 grid of metatile in
 
 ### Tilemap Resize
 
-`resizeTilemap(src, newWidth, newHeight, anchor)` creates a new tilemap at the target dimensions, copying existing 256-byte blocks into their aligned positions based on the anchor. The anchor determines horizontal and vertical offsets:
+`resizeTilemap(src, newWidth, newHeight, anchor)` creates a new tilemap at the target dimensions, copying individual metatiles into their new positions based on the anchor. Offsets are computed in metatile units (each block = 16 metatiles) for sub-block precision:
 
-- **Horizontal:** `left` → offset 0, `right` → offset = newWidth - srcWidth, `center` → floor((newWidth - srcWidth) / 2)
-- **Vertical:** `top` → offset 0, `bottom` → offset = newHeight - srcHeight, `center` → floor((newHeight - srcHeight) / 2)
+- **Horizontal:** `left` → offset 0, `right` → offset = delta × 16, `center` → delta × 8
+- **Vertical:** `top` → offset 0, `bottom` → offset = delta × 16, `center` → delta × 8
 
-Blocks that fall outside the new bounds are clipped. The maximum block count is `TILEMAP_MAX_BLOCKS = 32` (8192 / 256).
+When the change in width or height is an odd number of blocks, center anchors shift tiles by half a block (8 metatiles) so the content is truly centered. Metatiles that fall outside the new bounds are clipped. The maximum block count is `TILEMAP_MAX_BLOCKS = 32` (8192 / 256).
 
 The 9 anchor positions are defined as the `TilemapAnchor` type:
 ```

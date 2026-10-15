@@ -141,7 +141,7 @@ The resize button (SVG icon showing a dashed old rectangle + solid new rectangle
 
 **Constraints:** `width × height` must not exceed `TILEMAP_MAX_BLOCKS` (32 blocks = 8192 bytes / 256 bytes per block). The Resize button is disabled when constraints are violated.
 
-**Implementation:** `resizeTilemap()` in `src/core/tilemap.ts` computes horizontal and vertical block offsets from the anchor, creates a new `TILEMAP_MAX_DATA`-sized buffer, and copies each source block to its offset position in the destination. Blocks that fall outside the new dimensions are clipped.
+**Implementation:** `resizeTilemap()` in `src/core/tilemap.ts` computes horizontal and vertical offsets in metatile units (each block = 16 metatiles), creates a new `TILEMAP_MAX_DATA`-sized buffer, and copies each source metatile to its offset position in the destination. Center anchors use `delta × 8` metatiles, giving half-block precision when the change is an odd number of screens. Metatiles that fall outside the new dimensions are clipped.
 
 **Undo/redo:** `makeResizeAction()` captures the target layer and snapshots of both old and new tilemap state (`width`, `height`, `data` copy). Undo restores the old snapshot; redo re-applies the new one. Fresh `Uint8Array` copies are made on each invocation to prevent cross-contamination with subsequent edits.
 

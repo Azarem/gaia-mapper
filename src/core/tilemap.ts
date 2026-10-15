@@ -50,27 +50,43 @@ export function resizeTilemap(
   newHeight: number,
   anchor: TilemapAnchor,
 ): TilemapState {
-  let offsetX: number;
-  let offsetY: number;
+  const deltaW = newWidth - src.width;
+  const deltaH = newHeight - src.height;
 
-  if (anchor.endsWith('left')) offsetX = 0;
-  else if (anchor.endsWith('right')) offsetX = newWidth - src.width;
-  else offsetX = Math.floor((newWidth - src.width) / 2);
+  // Offsets in metatile units (each block = 16 metatiles).
+  // Center anchors use delta * 8 for half-block precision when the
+  // change is an odd number of screens.
+  let offsetMetaX: number;
+  let offsetMetaY: number;
 
-  if (anchor.startsWith('top')) offsetY = 0;
-  else if (anchor.startsWith('bottom')) offsetY = newHeight - src.height;
-  else offsetY = Math.floor((newHeight - src.height) / 2);
+  if (anchor.endsWith('left')) offsetMetaX = 0;
+  else if (anchor.endsWith('right')) offsetMetaX = deltaW * 16;
+  else offsetMetaX = deltaW * 8;
+
+  if (anchor.startsWith('top')) offsetMetaY = 0;
+  else if (anchor.startsWith('bottom')) offsetMetaY = deltaH * 16;
+  else offsetMetaY = deltaH * 8;
 
   const data = new Uint8Array(TILEMAP_MAX_DATA);
+  const srcMetaW = src.width << 4;
+  const srcMetaH = src.height << 4;
+  const dstMetaW = newWidth << 4;
+  const dstMetaH = newHeight << 4;
 
-  for (let by = 0; by < src.height; by++) {
-    for (let bx = 0; bx < src.width; bx++) {
-      const nx = bx + offsetX;
-      const ny = by + offsetY;
-      if (nx < 0 || nx >= newWidth || ny < 0 || ny >= newHeight) continue;
-      const srcOff = (by * src.width + bx) * TILEMAP_BLOCK_SIZE;
-      const dstOff = (ny * newWidth + nx) * TILEMAP_BLOCK_SIZE;
-      data.set(src.data.subarray(srcOff, srcOff + TILEMAP_BLOCK_SIZE), dstOff);
+  for (let sy = 0; sy < srcMetaH; sy++) {
+    const dy = sy + offsetMetaY;
+    if (dy < 0 || dy >= dstMetaH) continue;
+    const srcRowBlock = (sy >> 4) * src.width;
+    const srcCellY = (sy & 15) << 4;
+    const dstRowBlock = (dy >> 4) * newWidth;
+    const dstCellY = (dy & 15) << 4;
+
+    for (let sx = 0; sx < srcMetaW; sx++) {
+      const dx = sx + offsetMetaX;
+      if (dx < 0 || dx >= dstMetaW) continue;
+      const srcOff = (srcRowBlock + (sx >> 4)) * TILEMAP_BLOCK_SIZE + srcCellY + (sx & 15);
+      const dstOff = (dstRowBlock + (dx >> 4)) * TILEMAP_BLOCK_SIZE + dstCellY + (dx & 15);
+      data[dstOff] = src.data[srcOff];
     }
   }
 
