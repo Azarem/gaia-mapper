@@ -93,6 +93,55 @@ export function resizeTilemap(
   return { width: newWidth, height: newHeight, data };
 }
 
+export type NudgeDirection = 'up' | 'down' | 'left' | 'right';
+
+/**
+ * Shift the entire tilemap by `amount` metatiles in `direction`.
+ * When `wrap` is true, tiles pushed off one edge reappear on the opposite side.
+ * When false, vacated positions are zeroed.
+ */
+export function nudgeTilemap(
+  src: TilemapState,
+  direction: NudgeDirection,
+  amount: number,
+  wrap: boolean,
+): TilemapState {
+  const metaW = src.width << 4;
+  const metaH = src.height << 4;
+  const data = new Uint8Array(TILEMAP_MAX_DATA);
+
+  // Offset from destination to source metatile position
+  let dx = 0;
+  let dy = 0;
+  if (direction === 'left') dx = amount;
+  else if (direction === 'right') dx = -amount;
+  else if (direction === 'up') dy = amount;
+  else dy = -amount;
+
+  for (let dstY = 0; dstY < metaH; dstY++) {
+    let srcY = dstY + dy;
+    if (wrap) srcY = ((srcY % metaH) + metaH) % metaH;
+    else if (srcY < 0 || srcY >= metaH) continue;
+
+    const dstRowBase = (dstY >> 4) * src.width;
+    const dstCellY = (dstY & 15) << 4;
+    const srcRowBase = (srcY >> 4) * src.width;
+    const srcCellY = (srcY & 15) << 4;
+
+    for (let dstX = 0; dstX < metaW; dstX++) {
+      let srcX = dstX + dx;
+      if (wrap) srcX = ((srcX % metaW) + metaW) % metaW;
+      else if (srcX < 0 || srcX >= metaW) continue;
+
+      const srcOff = (srcRowBase + (srcX >> 4)) * TILEMAP_BLOCK_SIZE + srcCellY + (srcX & 15);
+      const dstOff = (dstRowBase + (dstX >> 4)) * TILEMAP_BLOCK_SIZE + dstCellY + (dstX & 15);
+      data[dstOff] = src.data[srcOff];
+    }
+  }
+
+  return { width: src.width, height: src.height, data };
+}
+
 /**
  * Render the full tilemap by compositing metatile regions from a pre-rendered tileset bitmap.
  * Port of ControlTest.ReloadTilemap().

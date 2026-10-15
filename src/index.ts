@@ -14,7 +14,8 @@ import { GfxViewer } from './editor/gfx-viewer';
 import { PaletteViewer } from './editor/palette-viewer';
 import { SceneSelector } from './editor/scene-selector';
 import {
-  resizeTilemap, type TilemapAnchor, type TilemapState,
+  resizeTilemap, nudgeTilemap,
+  type TilemapAnchor, type NudgeDirection, type TilemapState,
   TILEMAP_MAX_BLOCKS,
 } from './core/tilemap';
 
@@ -306,6 +307,7 @@ async function init(): Promise<void> {
   layerBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     resizeDropdown.classList.remove('open');
+    closeNudgeDropdown();
     const isOpen = dropdown.classList.contains('open');
     if (isOpen) {
       closeDropdown();
@@ -453,6 +455,7 @@ async function init(): Promise<void> {
   resizeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     closeDropdown();
+    closeNudgeDropdown();
     if (resizeDropdown.classList.contains('open')) {
       closeResizeDropdown();
     } else {
@@ -533,6 +536,122 @@ async function init(): Promise<void> {
     }
     return {
       description: `Resize to ${newSnap.width}\u00d7${newSnap.height}`,
+      undo() {
+        const mgr = getManager();
+        if (mgr) {
+          mgr.tilemap = {
+            width: oldSnap.width,
+            height: oldSnap.height,
+            data: new Uint8Array(oldSnap.data),
+          };
+        }
+        tilemapEditor.refresh();
+        refreshMainView();
+      },
+      redo() {
+        const mgr = getManager();
+        if (mgr) {
+          mgr.tilemap = {
+            width: newSnap.width,
+            height: newSnap.height,
+            data: new Uint8Array(newSnap.data),
+          };
+        }
+        tilemapEditor.refresh();
+        refreshMainView();
+      },
+    };
+  }
+
+  // --- Nudge tilemap ---
+
+  const nudgeBtn = $('btn-nudge') as HTMLButtonElement;
+  const nudgeDropdown = $('nudge-dropdown') as HTMLDivElement;
+  const nudgeAmountInput = $('nudge-amount') as HTMLInputElement;
+  const nudgeWrapInput = $('nudge-wrap') as HTMLInputElement;
+
+  function openNudgeDropdown(): void {
+    if (!tilemapEditor.tilemapManager?.tilemap) {
+      events.emit('status:info', 'No tilemap loaded');
+      return;
+    }
+    nudgeDropdown.classList.add('open');
+  }
+
+  function closeNudgeDropdown(): void {
+    nudgeDropdown.classList.remove('open');
+  }
+
+  nudgeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeDropdown();
+    closeResizeDropdown();
+    if (nudgeDropdown.classList.contains('open')) {
+      closeNudgeDropdown();
+    } else {
+      openNudgeDropdown();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!nudgeDropdown.contains(e.target as Node) && !nudgeBtn.contains(e.target as Node)) {
+      closeNudgeDropdown();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && nudgeDropdown.classList.contains('open')) {
+      closeNudgeDropdown();
+    }
+  });
+
+  nudgeDropdown.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.nudge-arrow') as HTMLElement | null;
+    if (!btn) return;
+
+    const tm = tilemapEditor.tilemapManager?.tilemap;
+    if (!tm) return;
+
+    const direction = btn.dataset.dir as NudgeDirection;
+    const amount = Math.max(1, parseInt(nudgeAmountInput.value, 10) || 1);
+    const wrap = nudgeWrapInput.checked;
+
+    const oldSnapshot: TilemapState = {
+      width: tm.width,
+      height: tm.height,
+      data: new Uint8Array(tm.data),
+    };
+
+    const newState = nudgeTilemap(oldSnapshot, direction, amount, wrap);
+    tilemapEditor.tilemapManager!.tilemap = newState;
+
+    const targetLayer = state.activeLayer;
+    history.push(makeNudgeAction(targetLayer, direction, amount, oldSnapshot, {
+      width: newState.width,
+      height: newState.height,
+      data: new Uint8Array(newState.data),
+    }));
+    updateUndoRedoButtons();
+
+    tilemapEditor.refresh();
+    refreshMainView();
+    events.emit('status:info', `Nudged ${direction} by ${amount}${wrap ? ' (wrap)' : ''}`);
+  });
+
+  function makeNudgeAction(
+    targetLayer: 1 | 2,
+    direction: NudgeDirection,
+    amount: number,
+    oldSnap: TilemapState,
+    newSnap: TilemapState,
+  ): UndoAction {
+    function getManager() {
+      return targetLayer === 2
+        ? state.scene?.effectTilemap
+        : state.scene?.mainTilemap;
+    }
+    return {
+      description: `Nudge ${direction} ${amount}`,
       undo() {
         const mgr = getManager();
         if (mgr) {

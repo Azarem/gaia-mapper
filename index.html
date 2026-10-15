@@ -50,6 +50,19 @@
           </div>
         </div>
       </span>
+      <span class="dropdown-wrap">
+        <button id="btn-nudge" class="mode-btn" title="Nudge tilemap"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1l2.5 3H8v3h3V5.5L14 8l-3 2.5V9H8v3h1.5L7 14l-2.5-2H6V9H3v1.5L0 8l3-2.5V7h3V4H4.5z" fill="currentColor"/></svg></button>
+        <div id="nudge-dropdown" class="nudge-dropdown">
+          <div class="nudge-pad">
+            <button type="button" class="nudge-arrow nudge-up" data-dir="up" title="Nudge up">&#x25B2;</button>
+            <button type="button" class="nudge-arrow nudge-left" data-dir="left" title="Nudge left">&#x25C0;</button>
+            <input type="number" id="nudge-amount" class="nudge-amount" min="1" max="255" value="1" title="Amount (metatiles)">
+            <button type="button" class="nudge-arrow nudge-right" data-dir="right" title="Nudge right">&#x25B6;</button>
+            <button type="button" class="nudge-arrow nudge-down" data-dir="down" title="Nudge down">&#x25BC;</button>
+          </div>
+          <label class="nudge-wrap-label"><input type="checkbox" id="nudge-wrap" checked> Wrap</label>
+        </div>
+      </span>
     </div>
     <div class="toolbar-group">
       <button id="btn-undo" title="Undo (Ctrl+Z)" disabled>&#x21B6;</button>
