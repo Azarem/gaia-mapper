@@ -92,11 +92,33 @@ async function init(): Promise<void> {
     },
     onDraw: (ctx, zoom) => tilemapEditor.drawOverlay(ctx, zoom),
     onDragEnd: () => {
-      const changes = tilemapEditor.commitStampBatch();
-      if (changes) {
-        history.push(makeTilemapAction(changes));
-        updateUndoRedoButtons();
+      const interactionType = tilemapEditor.finalizeLeftDrag();
+      if (interactionType === 'select') {
+        updatePatternUI();
+        mainView.redraw();
+      } else {
+        mainView.refreshOffscreen();
+        const changes = tilemapEditor.commitStampBatch();
+        if (changes) {
+          history.push(makeTilemapAction(changes));
+          updateUndoRedoButtons();
+        }
+        updatePatternUI();
+        mainView.redraw();
       }
+    },
+    onRightDragStart: (x, y) => {
+      tilemapEditor.beginPatternSelection(x, y);
+      mainView.redraw();
+    },
+    onRightDrag: (x, y) => {
+      tilemapEditor.updatePatternSelection(x, y);
+      mainView.redraw();
+    },
+    onRightDragEnd: () => {
+      tilemapEditor.finalizePatternSelection();
+      updatePatternUI();
+      mainView.redraw();
     },
   });
 
@@ -105,15 +127,45 @@ async function init(): Promise<void> {
     mainView.fitToView();
   });
 
+  function getBaseCursor(): string {
+    if (tilemapEditor.patternMode && tilemapEditor.hasPattern) return 'copy';
+    return 'crosshair';
+  }
+
+  function updatePatternUI(): void {
+    const btn = $('btn-pattern') as HTMLButtonElement;
+    btn.classList.toggle('active', tilemapEditor.patternMode);
+    mainCanvas.style.cursor = getBaseCursor();
+    mainCanvas.classList.toggle('pattern-stamp', tilemapEditor.patternMode && tilemapEditor.hasPattern);
+  }
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Control') mainCanvas.style.cursor = 'copy';
   });
   document.addEventListener('keyup', (e) => {
-    if (e.key === 'Control') mainCanvas.style.cursor = 'crosshair';
+    if (e.key === 'Control') mainCanvas.style.cursor = getBaseCursor();
   });
 
   const tilesetEditor = new TilesetEditor(state);
   const tilemapEditor = new TilemapEditor(state);
+
+  // Pattern stamp toggle
+  const patternBtn = $('btn-pattern') as HTMLButtonElement;
+  patternBtn.addEventListener('click', () => {
+    const newMode = !tilemapEditor.patternMode;
+    tilemapEditor.setPatternMode(newMode);
+    updatePatternUI();
+    mainView.redraw();
+    events.emit('status:info', newMode ? 'Pattern mode ON \u2014 select a region' : 'Pattern mode OFF');
+  });
+
+  events.on('pattern:toggled', ({ enabled }) => {
+    updatePatternUI();
+    mainView.redraw();
+    if (!enabled) {
+      events.emit('status:info', 'Pattern mode OFF');
+    }
+  });
   const gfxViewer = new GfxViewer($('gfx-canvas') as HTMLCanvasElement, state);
   const paletteViewer = new PaletteViewer($('palette-canvas') as HTMLCanvasElement, state);
 
@@ -244,6 +296,8 @@ async function init(): Promise<void> {
     if (state.activeLayer === layer) return;
     state.activeLayer = layer;
     updateLayerButton();
+    tilemapEditor.setPatternMode(false);
+    updatePatternUI();
     events.emit('layer:changed', { layer });
     refreshAll();
   }
@@ -710,6 +764,8 @@ async function init(): Promise<void> {
   events.on('scene:loaded', () => {
     history.clear();
     updateUndoRedoButtons();
+    tilemapEditor.setPatternMode(false);
+    updatePatternUI();
     refreshAll();
   });
 
@@ -718,6 +774,10 @@ async function init(): Promise<void> {
   events.on('tileset:selected', ({ metatileIndex, quadIndex }) => {
     state.selectedMetatile = metatileIndex;
     state.selectedQuad = quadIndex;
+    if (tilemapEditor.patternMode) {
+      tilemapEditor.setPatternMode(false);
+      updatePatternUI();
+    }
     tilesetEditor.updatePropertyPanel();
     tilesetEditor.syncGfxAndPalette();
     tilesetEditor.refreshPicker();

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsdown",
-    "dev": "tsdown --watch",
+    "dev": "tsdown && npx serve",
     "typecheck": "tsc --noEmit",
     "payload": "tsx scripts/build-payload.ts"
   },

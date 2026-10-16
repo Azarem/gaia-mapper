@@ -543,6 +543,11 @@ button:active {
   accent-color: var(--accent);
 }
 
+/* Pattern stamp cursor */
+#main-canvas.pattern-stamp {
+  cursor: copy;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;

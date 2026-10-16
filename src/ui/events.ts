@@ -9,6 +9,7 @@ interface EventMap {
   'gfx:selected': { tileIndex: number };
   'layer:changed': { layer: 1 | 2 };
   'grid:toggled': { enabled: boolean };
+  'pattern:toggled': { enabled: boolean };
   'asset:imported': void;
   'status:coords': string;
   'status:info': string;

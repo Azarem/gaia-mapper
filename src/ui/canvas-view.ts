@@ -8,6 +8,10 @@ export interface CanvasViewOptions {
   onClick?: (x: number, y: number, button: number, ctrlKey: boolean) => void;
   onDraw?: (ctx: CanvasRenderingContext2D, zoom: number) => void;
   onDragEnd?: () => void;
+  onRightDragStart?: (x: number, y: number) => void;
+  onRightDrag?: (x: number, y: number) => void;
+  onRightDragEnd?: () => void;
+  rightDragThreshold?: number;
 }
 
 export class CanvasView {
@@ -29,6 +33,11 @@ export class CanvasView {
   private imageData: ImageData | null = null;
   private offscreen: HTMLCanvasElement | null = null;
   private offscreenCtx: CanvasRenderingContext2D | null = null;
+
+  private isRightDown = false;
+  private isRightDragging = false;
+  private rightDownScreenX = 0;
+  private rightDownScreenY = 0;
 
   private opts: CanvasViewOptions;
 
@@ -138,6 +147,23 @@ export class CanvasView {
       e.preventDefault();
       return;
     }
+
+    if (e.button === 2) {
+      if (this.opts.onRightDragStart) {
+        this.isRightDown = true;
+        this.rightDownScreenX = e.clientX;
+        this.rightDownScreenY = e.clientY;
+        e.preventDefault();
+        return;
+      }
+      if (this.opts.onClick) {
+        const rect = this.canvas.getBoundingClientRect();
+        const { x, y } = this.screenToContent(e.clientX - rect.left, e.clientY - rect.top);
+        this.opts.onClick(x, y, 2, e.ctrlKey);
+      }
+      return;
+    }
+
     if (e.button === 0 && !e.ctrlKey) {
       this.isLeftDragging = true;
     }
@@ -158,6 +184,30 @@ export class CanvasView {
       return;
     }
 
+    if (this.isRightDown && (e.buttons & 2)) {
+      const dx = e.clientX - this.rightDownScreenX;
+      const dy = e.clientY - this.rightDownScreenY;
+      const threshold = this.opts.rightDragThreshold ?? 5;
+
+      if (!this.isRightDragging && (dx * dx + dy * dy) >= threshold * threshold) {
+        this.isRightDragging = true;
+        const rect = this.canvas.getBoundingClientRect();
+        const start = this.screenToContent(
+          this.rightDownScreenX - rect.left,
+          this.rightDownScreenY - rect.top,
+        );
+        this.opts.onRightDragStart!(start.x, start.y);
+      }
+
+      if (this.isRightDragging) {
+        const rect = this.canvas.getBoundingClientRect();
+        const { x, y } = this.screenToContent(e.clientX - rect.left, e.clientY - rect.top);
+        this.opts.onRightDrag?.(x, y);
+        this.redraw();
+      }
+      return;
+    }
+
     if (this.opts.onHover) {
       const rect = this.canvas.getBoundingClientRect();
       const { x, y } = this.screenToContent(e.clientX - rect.left, e.clientY - rect.top);
@@ -171,11 +221,26 @@ export class CanvasView {
     }
   };
 
-  private onMouseUp = (_e: MouseEvent): void => {
+  private onMouseUp = (e: MouseEvent): void => {
     if (this.isPanning) {
       this.isPanning = false;
       this.canvas.style.cursor = 'crosshair';
     }
+
+    if (this.isRightDown) {
+      if (this.isRightDragging) {
+        this.opts.onRightDragEnd?.();
+      } else if (e.type === 'mouseup') {
+        if (this.opts.onClick) {
+          const rect = this.canvas.getBoundingClientRect();
+          const { x, y } = this.screenToContent(e.clientX - rect.left, e.clientY - rect.top);
+          this.opts.onClick(x, y, 2, e.ctrlKey);
+        }
+      }
+      this.isRightDown = false;
+      this.isRightDragging = false;
+    }
+
     if (this.isLeftDragging) {
       this.isLeftDragging = false;
       this.opts.onDragEnd?.();
