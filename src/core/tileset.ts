@@ -157,6 +157,26 @@ export class TilesetRenderer {
   }
 
   /**
+   * Return per-quad block flags for every metatile.
+   * flags[i] is a 4-bit mask: bit 0 = TL, bit 1 = TR, bit 2 = BL, bit 3 = BR.
+   */
+  getBlockFlags(): Uint8Array {
+    const flags = new Uint8Array(METATILE_COUNT);
+    for (let m = 0; m < METATILE_COUNT; m++) {
+      const base = m << 3; // m * 4 entries * 2 bytes
+      let mask = 0;
+      for (let q = 0; q < 4; q++) {
+        const hi = base + (q << 1) + 1;
+        if (hi < this.data.length && (this.data[hi] & 0x02)) {
+          mask |= (1 << q);
+        }
+      }
+      flags[m] = mask;
+    }
+    return flags;
+  }
+
+  /**
    * Get the 4 entry indices for a metatile.
    * Metatile N → entries [N*4, N*4+1, N*4+2, N*4+3] = [TL, TR, BL, BR]
    */

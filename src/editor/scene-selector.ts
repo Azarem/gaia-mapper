@@ -42,7 +42,7 @@ export class SceneSelector {
 
       const opt = document.createElement('option');
       opt.value = String(i);
-      opt.textContent = `#${scene.id.toString().padStart(3, '0')} ${scene.description}`;
+      opt.textContent = `#${scene.id.toString(16).toUpperCase().padStart(3, '0')} ${scene.description}`;
       (optgroup ?? this.select).appendChild(opt);
     }
   }

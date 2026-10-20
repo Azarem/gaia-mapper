@@ -119,6 +119,20 @@ export class TilemapEditor {
     this._isStamping = false;
   }
 
+  /** Set a pattern from an external source (e.g. tileset picker drag). */
+  setExternalPattern(tiles: number[], width: number, height: number): void {
+    this._patternMode = true;
+    this._pattern = { width, height, tiles, sourceX: -1, sourceY: -1 };
+    this.isSelectingPattern = false;
+    this._isStamping = false;
+    this.selStartTileX = -1;
+    this.selStartTileY = -1;
+    this.selEndTileX = -1;
+    this.selEndTileY = -1;
+    this.stampExtentX = -1;
+    this.stampExtentY = -1;
+  }
+
   beginPatternSelection(px: number, py: number): void {
     if (!this.tilemapManager?.tilemap) return;
     const tileX = Math.floor(px / 16);
@@ -521,6 +535,31 @@ export class TilemapEditor {
     const mapW = tm.width << 8;
     const mapH = tm.height << 8;
 
+    if (this.state.blockViewEnabled) {
+      const ts = this.activeTileset;
+      if (ts) {
+        const blockFlags = ts.getBlockFlags();
+        ctx.fillStyle = 'rgba(255, 40, 40, 0.25)';
+        let offset = 0;
+        for (let by = 0; by < tm.height; by++) {
+          for (let bx = 0; bx < tm.width; bx++) {
+            for (let cy = 0; cy < 16; cy++) {
+              for (let cx = 0; cx < 16; cx++) {
+                const mask = blockFlags[tm.data[offset++]];
+                if (!mask) continue;
+                const px = ((bx << 4) | cx) << 4;
+                const py = ((by << 4) | cy) << 4;
+                if (mask & 1) ctx.fillRect(px, py, 8, 8);         // TL
+                if (mask & 2) ctx.fillRect(px + 8, py, 8, 8);     // TR
+                if (mask & 4) ctx.fillRect(px, py + 8, 8, 8);     // BL
+                if (mask & 8) ctx.fillRect(px + 8, py + 8, 8, 8); // BR
+              }
+            }
+          }
+        }
+      }
+    }
+
     if (this.state.gridEnabled) {
       ctx.strokeStyle = 'rgba(255,255,255,0.3)';
       ctx.lineWidth = 1 / zoom;
@@ -538,8 +577,8 @@ export class TilemapEditor {
       }
     }
 
-    // Pattern source region outline
-    if (this._patternMode && this._pattern && !this.isSelectingPattern) {
+    // Pattern source region outline (only for tilemap-sourced patterns)
+    if (this._patternMode && this._pattern && !this.isSelectingPattern && this._pattern.sourceX >= 0) {
       const { sourceX, sourceY, width, height } = this._pattern;
       ctx.fillStyle = 'rgba(0, 212, 255, 0.1)';
       ctx.fillRect(sourceX * 16, sourceY * 16, width * 16, height * 16);

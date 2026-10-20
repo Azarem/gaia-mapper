@@ -18,6 +18,7 @@
       <button id="btn-layer" class="mode-btn dropdown-trigger" title="Scene assets">Layer 1 &#x25BE;</button>
       <div id="asset-dropdown" class="asset-dropdown"></div>
       <button id="btn-grid" class="mode-btn" title="Toggle grid overlay">Grid</button>
+      <button id="btn-block-view" class="mode-btn" title="Show block collision overlay"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="5" rx=".5" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="1" y="8" width="12" height="5" rx=".5" fill="none" stroke="currentColor" stroke-width="1.1"/><line x1="7" y1="1" x2="7" y2="6" stroke="currentColor" stroke-width="1"/><line x1="4" y1="8" x2="4" y2="13" stroke="currentColor" stroke-width="1"/><line x1="10" y1="8" x2="10" y2="13" stroke="currentColor" stroke-width="1"/></svg></button>
       <button id="btn-pattern" class="mode-btn" title="Pattern stamp mode (right-drag to select)"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="8" rx=".5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2.5 1.5"/><path d="M9 10.5l2 2.5M11 10.5l-2 2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></button>
       <span class="dropdown-wrap">
         <button id="btn-resize" class="mode-btn" title="Resize tilemap"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="3" width="6" height="6" rx=".5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 1"/><rect x="5" y="1" width="8" height="12" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
@@ -99,10 +100,10 @@
       <section id="properties-panel" class="panel">
         <h3>Properties</h3>
         <div id="prop-controls">
-          <label><input type="checkbox" id="prop-hflip"> H-Flip</label>
-          <label><input type="checkbox" id="prop-vflip"> V-Flip</label>
-          <label><input type="checkbox" id="prop-priority"> Priority</label>
-          <label><input type="checkbox" id="prop-block"> Block</label>
+          <label title="Alt+H"><input type="checkbox" id="prop-hflip"> <u>H</u>-Flip</label>
+          <label title="Alt+V"><input type="checkbox" id="prop-vflip"> <u>V</u>-Flip</label>
+          <label title="Alt+P"><input type="checkbox" id="prop-priority"> <u>P</u>riority</label>
+          <label title="Alt+B"><input type="checkbox" id="prop-block"> <u>B</u>lock</label>
           <div class="prop-row">
             <span>Tile: </span><span id="prop-tile-index">--</span>
           </div>

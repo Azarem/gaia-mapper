@@ -27,6 +27,7 @@ export interface AppState {
   scene: SceneState | null;
   activeLayer: 1 | 2;
   gridEnabled: boolean;
+  blockViewEnabled: boolean;
   selectedMetatile: number;
   selectedQuad: number;
   selectedPalette: number;
@@ -39,6 +40,7 @@ export const state: AppState = {
   scene: null,
   activeLayer: 1,
   gridEnabled: false,
+  blockViewEnabled: false,
   selectedMetatile: 0,
   selectedQuad: 0,
   selectedPalette: 0,
@@ -117,6 +119,9 @@ async function init(): Promise<void> {
     },
     onRightDragEnd: () => {
       tilemapEditor.finalizePatternSelection();
+      if (tilemapEditor.hasPattern) {
+        tilesetEditor.setPatternSource('tilemap');
+      }
       updatePatternUI();
       mainView.redraw();
     },
@@ -137,6 +142,10 @@ async function init(): Promise<void> {
     btn.classList.toggle('active', tilemapEditor.patternMode);
     mainCanvas.style.cursor = getBaseCursor();
     mainCanvas.classList.toggle('pattern-stamp', tilemapEditor.patternMode && tilemapEditor.hasPattern);
+    if (!tilemapEditor.patternMode || !tilemapEditor.hasPattern) {
+      tilesetEditor.setPatternSource(null);
+    }
+    tilesetEditor.refreshPicker();
   }
 
   document.addEventListener('keydown', (e) => {
@@ -148,6 +157,18 @@ async function init(): Promise<void> {
 
   const tilesetEditor = new TilesetEditor(state);
   const tilemapEditor = new TilemapEditor(state);
+
+  // Right-click drag on tileset picker → pattern for stamping
+  tilesetEditor.initPickerInteraction((tiles, width, height, sourceCol, sourceRow) => {
+    tilemapEditor.setExternalPattern(tiles, width, height);
+    tilesetEditor.setPatternSource({
+      c1: sourceCol, r1: sourceRow,
+      c2: sourceCol + width - 1, r2: sourceRow + height - 1,
+    });
+    updatePatternUI();
+    mainView.redraw();
+    events.emit('status:info', `Pattern selected from tileset: ${width}\u00d7${height} metatiles`);
+  });
 
   // Pattern stamp toggle
   const patternBtn = $('btn-pattern') as HTMLButtonElement;
@@ -458,6 +479,15 @@ async function init(): Promise<void> {
     gfxViewer.refresh();
   });
 
+  // Block view toggle
+  const blockBtn = $('btn-block-view') as HTMLButtonElement;
+  blockBtn.addEventListener('click', () => {
+    state.blockViewEnabled = !state.blockViewEnabled;
+    blockBtn.classList.toggle('active', state.blockViewEnabled);
+    mainView.redraw();
+    tilesetEditor.refreshPicker();
+  });
+
   // --- Resize tilemap ---
 
   const resizeBtn = $('btn-resize') as HTMLButtonElement;
@@ -758,6 +788,35 @@ async function init(): Promise<void> {
   propPriority.addEventListener('change', onPropChange);
   propBlock.addEventListener('change', onPropChange);
 
+  // Alt+key shortcuts for property toggles
+  document.addEventListener('keydown', (e) => {
+    if (!e.altKey) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+    switch (e.key.toLowerCase()) {
+      case 'h':
+        e.preventDefault();
+        propHFlip.checked = !propHFlip.checked;
+        onPropChange();
+        break;
+      case 'v':
+        e.preventDefault();
+        propVFlip.checked = !propVFlip.checked;
+        onPropChange();
+        break;
+      case 'p':
+        e.preventDefault();
+        propPriority.checked = !propPriority.checked;
+        onPropChange();
+        break;
+      case 'b':
+        e.preventDefault();
+        propBlock.checked = !propBlock.checked;
+        onPropChange();
+        break;
+    }
+  });
 
   // --- Event subscriptions ---
 

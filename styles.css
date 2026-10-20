@@ -189,6 +189,11 @@ button:active {
   accent-color: var(--accent);
 }
 
+#prop-controls u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .prop-row {
   display: flex;
   gap: 4px;
