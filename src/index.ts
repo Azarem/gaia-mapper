@@ -847,6 +847,13 @@ async function init(): Promise<void> {
 
   events.on('palette:selected', ({ paletteIndex }) => {
     state.selectedPalette = paletteIndex;
+    const change = tilesetEditor.assignPalette(paletteIndex);
+    if (change) {
+      history.push(makeTilesetAction(change.entryIndex, change.oldWord, change.newWord));
+      updateUndoRedoButtons();
+      events.emit('tileset:changed');
+      tilesetEditor.updatePropertyPanel();
+    }
     gfxViewer.refresh();
     paletteViewer.refresh();
   });

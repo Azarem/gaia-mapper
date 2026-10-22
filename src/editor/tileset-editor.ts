@@ -414,6 +414,18 @@ export class TilesetEditor {
     return { entryIndex, oldWord, newWord };
   }
 
+  assignPalette(paletteIndex: number): { entryIndex: number; oldWord: number; newWord: number } | null {
+    if (!this.tileset) return null;
+    const entryIndex = (this.state.selectedMetatile << 2) + this.state.selectedQuad;
+    const oldWord = this.tileset.getEntryWord(entryIndex);
+    const entry = this.tileset.getEntry(entryIndex);
+    entry.paletteIndex = paletteIndex;
+    this.tileset.setEntry(entryIndex, entry);
+    const newWord = this.tileset.getEntryWord(entryIndex);
+    if (oldWord === newWord) return null;
+    return { entryIndex, oldWord, newWord };
+  }
+
   exportTileset(): void {
     if (!this.tileset) return;
     const blob = new Blob([this.tileset.data.buffer as ArrayBuffer], { type: 'application/octet-stream' });
