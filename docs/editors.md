@@ -156,7 +156,7 @@ Every export opens a **save dialog** so the user chooses where the file goes, in
 - Each kind of file has a picker `id` (`mapper-assets` for asset exports, `mapper-images` for map images). The browser remembers the folder last used with an `id`, so the dialog opens where that kind of file was saved before.
 - The dialog proposes a file name and filters for the file type, with the "All files" option left on so the user can rename freely. Cancelling the dialog cancels the export (status bar: `Export cancelled`).
 - `saveFile()` must run straight from the click handler (the API needs the user's click), so the handlers call it before doing slow work; the data is produced after the dialog closes.
-- Browsers without the API (Firefox, Safari) or pages not served over HTTPS or `localhost` fall back to a normal download, which goes to the browser's downloads setting.
+- The API only exists in Chromium browsers, only on HTTPS or `localhost` pages (not, for example, `http://192.168.x.x`), and not for a click the browser doesn't treat as a real user gesture. In those cases the file falls back to a normal download into the browser's downloads folder, and the status bar says why (`No save dialog: ... went to the browser's downloads — <reason>`). The fallback keeps the download's blob URL alive for a minute; revoking it right after the click can cancel large files.
 
 ## Map Image Export
 

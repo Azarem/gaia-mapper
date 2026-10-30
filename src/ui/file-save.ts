@@ -6,9 +6,10 @@
  * downloads folder. Each picker `id` makes the browser remember the folder last
  * used with it, so the dialog opens where that kind of file was saved before.
  *
- * Browsers without the API (Firefox, Safari) or without a secure context fall
- * back to a plain download, which goes wherever the browser is configured to
- * put downloads (or asks, if it is set to).
+ * The API only exists in Chromium browsers, and only on pages served over
+ * HTTPS or from localhost, outside cross-origin frames. Anywhere else the file
+ * falls back to a plain download, and the result says why so the status bar can
+ * tell the user instead of silently saving to the downloads folder.
  */
 
 interface FilePickerAcceptType {
@@ -44,9 +45,24 @@ export interface SaveRequest {
   place: SavePlace;
 }
 
-function getPicker(): ShowSaveFilePicker | null {
+export type SaveResult =
+  /** The user chose a location in the save dialog. `name` is the file name they chose. */
+  | { kind: 'saved'; name: string }
+  /** The user closed the dialog without saving. */
+  | { kind: 'cancelled' }
+  /** No dialog was possible; the file went to the browser's downloads. `reason` says why. */
+  | { kind: 'downloaded'; name: string; reason: string };
+
+/** The save dialog function, or the reason it can't be used on this page. */
+function getPicker(): { picker: ShowSaveFilePicker } | { reason: string } {
   const picker = (window as unknown as { showSaveFilePicker?: ShowSaveFilePicker }).showSaveFilePicker;
-  return typeof picker === 'function' && window.isSecureContext ? picker.bind(window) : null;
+  if (!window.isSecureContext) {
+    return { reason: `this page (${location.origin}) is not HTTPS or localhost, so the browser hides the save dialog` };
+  }
+  if (typeof picker !== 'function') {
+    return { reason: 'this browser has no save dialog support (use Chrome or Edge)' };
+  }
+  return { picker: picker.bind(window) };
 }
 
 function downloadFallback(blob: Blob, filename: string): void {
@@ -54,39 +70,44 @@ function downloadFallback(blob: Blob, filename: string): void {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoking right away can cancel the download of a large blob before it starts.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /**
  * Ask the user where to save, then write the file.
  *
- * `produce` runs after the dialog is open, so slow work (image encoding) does
- * not delay the dialog past the click that must trigger it. Call this
- * directly from the click handler.
- *
- * Resolves to the saved file name (as chosen by the user), or null if the user
- * cancelled the dialog.
+ * Call this directly from the click handler: the browser only opens the dialog
+ * for a real user click. `produce` runs after the dialog is open, so slow work
+ * (image encoding) doesn't delay the dialog past that click.
  */
 export async function saveFile(
   request: SaveRequest,
   produce: () => Blob | Promise<Blob>,
-): Promise<string | null> {
-  const picker = getPicker();
-  if (!picker) {
+): Promise<SaveResult> {
+  const found = getPicker();
+  if ('reason' in found) {
     downloadFallback(await produce(), request.suggestedName);
-    return request.suggestedName;
+    return { kind: 'downloaded', name: request.suggestedName, reason: found.reason };
   }
 
   let handle: WritableHandle;
   try {
-    handle = await picker({
+    handle = await found.picker({
       id: request.place,
       suggestedName: request.suggestedName,
       types: [{ description: request.description, accept: { [request.mime]: [request.extension] } }],
     });
   } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') return null;
+    if (err instanceof DOMException && err.name === 'AbortError') return { kind: 'cancelled' };
+    if (err instanceof DOMException && err.name === 'SecurityError') {
+      // Blocked in this context (cross-origin frame, or not a user click): download instead.
+      downloadFallback(await produce(), request.suggestedName);
+      return { kind: 'downloaded', name: request.suggestedName, reason: err.message };
+    }
     throw err;
   }
 
@@ -97,7 +118,7 @@ export async function saveFile(
   } finally {
     await writable.close();
   }
-  return handle.name;
+  return { kind: 'saved', name: handle.name };
 }
 
 /** Copy an ImageData onto a new canvas (a snapshot: later edits to the ImageData don't affect it). */

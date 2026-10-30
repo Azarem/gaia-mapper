@@ -2,7 +2,9 @@ import { events } from './ui/events';
 import { setupResizeObserver } from './ui/layout';
 import { CanvasView } from './ui/canvas-view';
 import { History, type UndoAction } from './ui/history';
-import { saveFile, imageDataToCanvas, canvasToPng, sanitizeFileName } from './ui/file-save';
+import {
+  saveFile, imageDataToCanvas, canvasToPng, sanitizeFileName, type SaveResult,
+} from './ui/file-save';
 import { fetchPayload } from './data/payload';
 import { parseManifest, type PayloadManifest, type SceneEntry } from './data/manifest';
 import {
@@ -506,8 +508,20 @@ async function init(): Promise<void> {
   });
 
   /** Report a finished (or cancelled) export in the status bar. */
-  function reportExport(savedAs: string | null, detail = ''): void {
-    events.emit('status:info', savedAs ? `Exported ${savedAs}${detail ? ` (${detail})` : ''}` : 'Export cancelled');
+  function reportExport(result: SaveResult, detail = ''): void {
+    const extra = detail ? ` (${detail})` : '';
+    switch (result.kind) {
+      case 'saved':
+        events.emit('status:info', `Exported ${result.name}${extra}`);
+        break;
+      case 'cancelled':
+        events.emit('status:info', 'Export cancelled');
+        break;
+      case 'downloaded':
+        events.emit('status:info',
+          `No save dialog: ${result.name}${extra} went to the browser's downloads — ${result.reason}`);
+        break;
+    }
   }
 
   function reportExportFailure(err: unknown): void {
@@ -559,7 +573,7 @@ async function init(): Promise<void> {
           extension: asset.extension,
           place: 'mapper-assets',
         }, () => new Blob([data.buffer as ArrayBuffer], { type: 'application/octet-stream' }))
-          .then((savedAs) => reportExport(savedAs))
+          .then((result) => reportExport(result))
           .catch(reportExportFailure);
       }
       return;
@@ -1026,7 +1040,7 @@ async function init(): Promise<void> {
       extension: '.png',
       place: 'mapper-images',
     }, () => canvasToPng(canvas))
-      .then((savedAs) => reportExport(savedAs, `${canvas.width}×${canvas.height}`))
+      .then((result) => reportExport(result, `${canvas.width}×${canvas.height}`))
       .catch(reportExportFailure);
   });
 
