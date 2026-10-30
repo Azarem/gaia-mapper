@@ -56,6 +56,7 @@ gaia-mapper/
 │   └── ui/                       # Shared UI infrastructure
 │       ├── canvas-view.ts        # Pannable/zoomable canvas with DPR scaling
 │       ├── events.ts             # Typed pub/sub event bus
+│       ├── file-save.ts          # Save-as dialog (File System Access API), PNG encoding
 │       ├── history.ts            # Undo/redo stack (200 action limit)
 │       └── layout.ts             # ResizeObserver helper
 └── docs/                         # This documentation
@@ -96,7 +97,7 @@ scene selector ──pick──> loadScene() ───────────�
 Individual assets can be replaced at runtime (import) or saved to disk (export) via the asset dropdown. The flow lives in `scene-loader.ts`:
 
 - **Import** (`importAssetData`): Reads a replacement file, replays the original load operation with the same meta offsets, and emits `asset:imported` to trigger a full refresh.
-- **Export** (`exportAssetData`): Copies the original payload file, overlays the modified in-memory data at the correct byte range, and returns a `Uint8Array` for download. Tilemaps are serialized directly via `serializeTilemap()`.
+- **Export** (`exportAssetData`): Copies the original payload file, overlays the modified in-memory data at the correct byte range, and returns a `Uint8Array`. Tilemaps are serialized directly via `serializeTilemap()`. The bytes are written with `saveFile()` (`ui/file-save.ts`), which opens a save dialog; see `editors.md` §"File Export".
 
 ## Event Bus
 

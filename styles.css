@@ -95,6 +95,15 @@ button:active {
   background: var(--highlight);
 }
 
+.mode-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mode-btn:disabled:hover {
+  border-color: var(--border);
+}
+
 .mode-btn.active {
   background: var(--accent-dim);
   border-color: var(--accent);

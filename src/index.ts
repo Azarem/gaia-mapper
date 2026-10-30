@@ -2,6 +2,7 @@ import { events } from './ui/events';
 import { setupResizeObserver } from './ui/layout';
 import { CanvasView } from './ui/canvas-view';
 import { History, type UndoAction } from './ui/history';
+import { saveFile, imageDataToCanvas, canvasToPng, sanitizeFileName } from './ui/file-save';
 import { fetchPayload } from './data/payload';
 import { parseManifest, type PayloadManifest, type SceneEntry } from './data/manifest';
 import {
@@ -504,14 +505,13 @@ async function init(): Promise<void> {
     }
   });
 
-  function downloadBlob(data: Uint8Array, filename: string): void {
-    const blob = new Blob([data.buffer as ArrayBuffer], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+  /** Report a finished (or cancelled) export in the status bar. */
+  function reportExport(savedAs: string | null, detail = ''): void {
+    events.emit('status:info', savedAs ? `Exported ${savedAs}${detail ? ` (${detail})` : ''}` : 'Export cancelled');
+  }
+
+  function reportExportFailure(err: unknown): void {
+    events.emit('status:info', `Export failed: ${err instanceof Error ? err.message : err}`);
   }
 
   function getExportFilename(asset: LoadedAsset): string {
@@ -551,8 +551,16 @@ async function init(): Promise<void> {
       const data = exportAssetData(state.scene, asset, state.payload);
       if (data) {
         const filename = getExportFilename(asset);
-        downloadBlob(data, filename);
-        events.emit('status:info', `Exported ${filename}`);
+        // Must be called straight from the click so the browser allows the dialog.
+        saveFile({
+          suggestedName: filename,
+          description: `${asset.type} data`,
+          mime: 'application/octet-stream',
+          extension: asset.extension,
+          place: 'mapper-assets',
+        }, () => new Blob([data.buffer as ArrayBuffer], { type: 'application/octet-stream' }))
+          .then((savedAs) => reportExport(savedAs))
+          .catch(reportExportFailure);
       }
       return;
     }
@@ -993,9 +1001,44 @@ async function init(): Promise<void> {
     ($('status-info') as HTMLSpanElement).textContent = text;
   });
 
+  // --- Map image export ---
+
+  const exportImageBtn = $('btn-export-image') as HTMLButtonElement;
+
+  /** Save the blended map exactly as shown on the canvas (visible layers only) as a PNG. */
+  exportImageBtn.addEventListener('click', () => {
+    const image = tilemapEditor.getImageData();
+    if (!image || !currentScene) {
+      events.emit('status:info', 'Nothing to export: no map is shown');
+      return;
+    }
+
+    const shown = ([1, 2] as Layer[]).filter(isLayerShown);
+    const layerNote = shown.length === 1 ? ` (layer ${shown[0]} only)` : '';
+    const name = `${sanitizeFileName(currentScene.description)}${layerNote}.png`;
+
+    // Snapshot now: the ImageData is edited in place and encoding happens after the dialog.
+    const canvas = imageDataToCanvas(image);
+    saveFile({
+      suggestedName: name,
+      description: 'PNG image',
+      mime: 'image/png',
+      extension: '.png',
+      place: 'mapper-images',
+    }, () => canvasToPng(canvas))
+      .then((savedAs) => reportExport(savedAs, `${canvas.width}×${canvas.height}`))
+      .catch(reportExportFailure);
+  });
+
+  events.on('scene:loaded', () => {
+    exportImageBtn.disabled = !tilemapEditor.getImageData();
+  });
+
   // Scene selection handler
+  let currentScene: SceneEntry | null = null;
   sceneSelector.onSelect(async (entry: SceneEntry) => {
     if (!state.payload || !state.manifest) return;
+    currentScene = entry;
     events.emit('status:info', `Loading ${entry.description}...`);
 
     state.activeLayer = 1;

@@ -1,5 +1,5 @@
 import { events } from '../ui/events';
-import { renderTilemapToImageData, serializeTilemap } from '../core/tilemap';
+import { renderTilemapToImageData } from '../core/tilemap';
 import { TILESET_WIDTH, TILESET_HEIGHT } from '../core/tileset';
 import {
   compositeRegion, getCompositeSize,
@@ -848,18 +848,5 @@ export class TilemapEditor {
       ctx.strokeStyle = 'rgba(255, 255, 0, 0.7)';
       ctx.strokeRect(this.hoverTileX * 16, this.hoverTileY * 16, 16, 16);
     }
-  }
-
-  exportTilemap(): void {
-    if (!this.tilemapManager?.tilemap) return;
-    const data = serializeTilemap(this.tilemapManager.tilemap);
-    const blob = new Blob([data.buffer as ArrayBuffer], { type: 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'tilemap.map';
-    a.click();
-    URL.revokeObjectURL(url);
-    events.emit('status:info', 'Tilemap exported');
   }
 }

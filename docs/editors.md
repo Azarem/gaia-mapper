@@ -124,7 +124,7 @@ Each asset entry shows:
 | Visibility button | Tilemaps only — eye icon, shows or hides that layer. Disabled on the last visible layer |
 | Edit button | Tilemaps only — pencil icon, makes that layer the active (edited) layer. Highlighted on the active layer |
 | Import button | Down-arrow icon — opens a file picker filtered by the asset's extension (`.map`, `.set`, `.bin`, `.pal`) |
-| Export button | Up-arrow icon — serializes the current in-memory data back to the native format and downloads it |
+| Export button | Up-arrow icon — serializes the current in-memory data back to the native format and saves it through a save dialog |
 
 **Edit:** Calls `selectLayerForEdit()` for whichever layer the tilemap belongs to (determined by its layer bitmask), then closes the dropdown and emits `status:info`.
 
@@ -143,11 +143,26 @@ Both layers are visible after a scene load, with layer 1 active. A scene with a 
 
 **Import:** Sets `fileInput.accept` to the asset's extension, then reads the selected file via `FileReader` and passes the raw bytes to `importAssetData()` in `scene-loader.ts`. This replays the original load operation with the stored meta offsets (source/destination offsets, size, flags). Emits `asset:imported` to trigger a full refresh.
 
-**Export:** Calls `exportAssetData()` in `scene-loader.ts`, which retrieves the original payload file, copies it, and overlays the modified in-memory data at the correct byte ranges. The result is downloaded with the resolved filename from the payload.
+**Export:** Calls `exportAssetData()` in `scene-loader.ts`, which retrieves the original payload file, copies it, and overlays the modified in-memory data at the correct byte ranges. The result is saved through a save dialog (see §"File Export"), proposing the resolved filename from the payload.
 
 **Mutual exclusion:** Opening the asset dropdown closes the resize dropdown (and vice versa). Clicking outside or pressing Escape closes either.
 
 **Layer reset on scene switch:** When a new scene is loaded, `state.activeLayer` is automatically reset to `1`, both layers are made visible, and the button text is updated. The status bar reports the scene's blend (e.g. "Additive blend").
+
+## File Export
+
+Every export opens a **save dialog** so the user chooses where the file goes, instead of the browser dropping it into its downloads folder. `saveFile()` in `ui/file-save.ts` uses the File System Access API (`showSaveFilePicker`):
+
+- Each kind of file has a picker `id` (`mapper-assets` for asset exports, `mapper-images` for map images). The browser remembers the folder last used with an `id`, so the dialog opens where that kind of file was saved before.
+- The dialog proposes a file name and filters for the file type, with the "All files" option left on so the user can rename freely. Cancelling the dialog cancels the export (status bar: `Export cancelled`).
+- `saveFile()` must run straight from the click handler (the API needs the user's click), so the handlers call it before doing slow work; the data is produced after the dialog closes.
+- Browsers without the API (Firefox, Safari) or pages not served over HTTPS or `localhost` fall back to a normal download, which goes to the browser's downloads setting.
+
+## Map Image Export
+
+The image button in the toolbar (right of the nudge tool, left of undo) saves the map as a **PNG**, lossless, 1:1 pixels (no zoom). The image is exactly the canvas content: the blended composite of the visible layers (see `rendering.md` Stage 3b), at layer 1's size when it is shown. Hidden layers are not included; when only one layer is shown, the file name says which (`Edward's Castle (layer 2 only).png`). Pixels where no layer draws (palette index 0 with nothing behind) stay transparent rather than being filled with the backdrop color. Overlays (grid, block view, hover, stamp previews) are never part of the image.
+
+The button is disabled until a scene with a map is loaded. The image is copied when the button is clicked, so edits made while the dialog is open don't change it.
 
 ## Tilemap Resize
 
