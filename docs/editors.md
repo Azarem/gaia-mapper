@@ -30,7 +30,17 @@ The UI is a three-panel layout:
 
 ## Tilemap Editor (`tilemap-editor.ts`)
 
-The main canvas shows the full tilemap composed from the active layer's tileset.
+The main canvas shows the scene's **visible layers blended** the way the game's display preset combines them (see `rendering.md` Stage 3b). Edits only ever touch the **active layer**, whose tileset fills the picker. Overlays (grid, block view, hover, stamp previews) follow the active layer.
+
+**Canvas area and wrapping.** While layer 1 is shown, the canvas, zoom-to-fit and the editable area are layer 1's size, whichever layer is active. Pointer positions are canvas positions and the active layer maps them to its own tiles modulo its size (`toLayerTile`):
+
+- Layer 2 smaller than layer 1 (Edward's Castle: 1×4 under 4×4): it repeats. A stamp lands on the wrapped layer 2 tile and appears at every repeat; previews are drawn at every repeat, the hover box also marks the other repeats dimmer, and the coordinate readout shows the layer tile (`Map (4, 2) (wrapped from 20, 2)`). A drag region that covers several repeats writes in reading order, so the last write to a layer tile wins, and the preview shows that result. Patterns crossing a repeat seam wrap to the other edge.
+- Layer 2 larger than layer 1 (a South Cape house: 2×2 under 1×1): only the part under layer 1's area can be clicked, stamped or selected. Hide layer 1 to edit the rest.
+- Layer 1 hidden: the canvas is layer 2's own size and nothing wraps.
+
+The status bar says when the active layer repeats or is cropped (`describeLayerFit`).
+
+Undo records tile changes in the layer's own block/cell coordinates, so they undo correctly whatever the canvas shows.
 
 **Interactions:**
 
@@ -111,11 +121,25 @@ Each asset entry shows:
 |---------|-------------|
 | Type icon | Colored inline SVG (blue grid for tilemap, green grid for tileset, orange frame for bitmap, purple circle for palette) |
 | Filename | The asset's manifest data name + layer hint (e.g., `map_sc03 L1`) |
-| Edit button | Tilemaps only — pencil icon, switches the active layer to edit that tilemap |
+| Visibility button | Tilemaps only — eye icon, shows or hides that layer. Disabled on the last visible layer |
+| Edit button | Tilemaps only — pencil icon, makes that layer the active (edited) layer. Highlighted on the active layer |
 | Import button | Down-arrow icon — opens a file picker filtered by the asset's extension (`.map`, `.set`, `.bin`, `.pal`) |
 | Export button | Up-arrow icon — serializes the current in-memory data back to the native format and downloads it |
 
-**Edit:** Calls `switchLayer()` to change the active layer to whichever layer the tilemap belongs to (determined by its layer bitmask). Closes the dropdown and emits `status:info`.
+**Edit:** Calls `selectLayerForEdit()` for whichever layer the tilemap belongs to (determined by its layer bitmask), then closes the dropdown and emits `status:info`.
+
+- Both layers visible: only the active layer changes.
+- Only one layer visible: the visible layer is hidden and the selected layer is shown, so the edited layer is always on screen.
+
+**Visibility:** Calls `toggleLayerVisibility()`. The dropdown stays open and rebuilds in place.
+
+- Turning a layer **on** only displays it. The active layer does not change.
+- Turning a layer **off** while it is the active layer makes the other layer active.
+- The last visible layer cannot be turned off (its eye is disabled).
+
+Both layers are visible after a scene load, with layer 1 active. A scene with a single tilemap has nothing to toggle: its only layer is always visible.
+
+**Layer-aware undo:** Tilemap and tileset history entries record the layer they were made on and apply to it on undo/redo, regardless of which layer is active at that point.
 
 **Import:** Sets `fileInput.accept` to the asset's extension, then reads the selected file via `FileReader` and passes the raw bytes to `importAssetData()` in `scene-loader.ts`. This replays the original load operation with the stored meta offsets (source/destination offsets, size, flags). Emits `asset:imported` to trigger a full refresh.
 
@@ -123,7 +147,7 @@ Each asset entry shows:
 
 **Mutual exclusion:** Opening the asset dropdown closes the resize dropdown (and vice versa). Clicking outside or pressing Escape closes either.
 
-**Layer reset on scene switch:** When a new scene is loaded, `state.activeLayer` is automatically reset to `1` and the button text is updated.
+**Layer reset on scene switch:** When a new scene is loaded, `state.activeLayer` is automatically reset to `1`, both layers are made visible, and the button text is updated. The status bar reports the scene's blend (e.g. "Additive blend").
 
 ## Tilemap Resize
 

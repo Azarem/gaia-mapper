@@ -37,7 +37,7 @@ Reads three data sources from the baserom:
 2. **`extracted/tables/scene_meta.asm`** — Parsed to extract per-scene asset command lists. Each `scene_meta_XXXX` block is matched to a `groups.json` scene by its hex scene ID.
 3. **`db-us/files.json`** — File metadata (type, offsets) used to locate extracted binary files.
 
-Additionally, `extracted/tables/display_preset_table.asm` is parsed to extract PPU effect-offset flags (byte 4 bit 7 of each display preset), which are injected into `ppu` asset entries.
+Additionally, `extracted/tables/display_preset_table.asm` is parsed (47 ten-byte records) and the first five bytes of each record are injected into the matching `ppu` asset entries. The build fails if a `ppu` entry references a preset that does not exist.
 
 For each referenced asset:
 
@@ -64,12 +64,12 @@ The manifest references assets by bare name (e.g., `map_sc03`). The payload ZIP 
 
 ## Runtime Loading (`payload.ts`)
 
-1. **Check IndexedDB cache** for the payload URL
+1. **Check IndexedDB cache** for the payload URL plus format version (`PAYLOAD_VERSION` in `index.ts`; bump it whenever the payload format changes so clients re-download, and older cached versions are pruned)
 2. If not cached, **fetch** the ZIP via HTTP
 3. **Store** the raw ArrayBuffer in IndexedDB for next time
 4. **Unzip** with `fflate.unzipSync()` → `Map<string, Uint8Array>`
 
-The cache key is the URL string. Call `clearCache()` to force re-download.
+The cache key is the URL plus the format version (`<url>?v=<n>`). Call `clearCache()` to force re-download.
 
 ## Manifest Format (`manifest.ts`)
 
@@ -100,7 +100,7 @@ interface AssetEntry {
 
 ### Asset Entry `meta` Fields
 
-**ppu:** `{ index, effectOffset }` — PPU display preset index. `effectOffset=true` when byte 4 bit 7 is clear (layer 2 tiles shift to VRAM page 1).
+**ppu:** `{ index, tm, ts, cgwsel, cgadsub, layerFlags }` — PPU display preset index plus the first five bytes of its `display_preset_table` record: TM, TS, CGWSEL, CGADSUB and the layer flags byte. `scene-loader.ts` parses these into `SceneState.blend` (how the two layers combine, see `rendering.md`) and sets the layer 2 tile page offset from `layerFlags` bit 7 (clear = tiles shift to VRAM page 1). Payloads older than version 2 lack these fields and fail to load.
 
 **bitmap:** `{ srcOffset, sizeW, dstOffset, isSprite }` — all in 512-byte units. `isSprite=true` writes to sprite VRAM region.
 
@@ -118,7 +118,7 @@ interface AssetEntry {
 
 | ASM Command | AssetEntry type | meta fields |
 |-------------|----------------|-------------|
-| `display-mode < #XX >` | `ppu` | `index` (+ injected `effectOffset`) |
+| `display-mode < #XX >` | `ppu` | `index` (+ injected `tm`, `ts`, `cgwsel`, `cgadsub`, `layerFlags`) |
 | `bitmap < #a, #b, #c, @file, #mode >` | `bitmap` | `srcOffset=a, sizeW=b, dstOffset=c, isSprite=(mode>0)` |
 | `palette < #a, #b, #c, @file >` | `palette` | `srcOffset=a, sizeW=b, dstOffset=c` |
 | `tileset < #a, #b, #c, #layer, @file >` | `tileset` | `srcOffset=a, sizeW=b, dstOffset=c, layer` |

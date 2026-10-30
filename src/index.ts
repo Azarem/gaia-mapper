@@ -18,14 +18,22 @@ import {
   type TilemapAnchor, type NudgeDirection, type TilemapState,
   TILEMAP_MAX_BLOCKS,
 } from './core/tilemap';
+import { describeBlend } from './core/display';
 
 const PAYLOAD_URL = 'payload.zip';
+/** Bump when the payload format changes (invalidates the IndexedDB cache). v2: ppu entries carry display registers. */
+const PAYLOAD_VERSION = 2;
+
+type Layer = 1 | 2;
 
 export interface AppState {
   manifest: PayloadManifest | null;
   payload: Map<string, Uint8Array> | null;
   scene: SceneState | null;
-  activeLayer: 1 | 2;
+  /** The layer edits apply to. Always a visible layer. */
+  activeLayer: Layer;
+  /** Which layers are displayed. At least one available layer is always visible. */
+  layerVisible: Record<Layer, boolean>;
   gridEnabled: boolean;
   blockViewEnabled: boolean;
   selectedMetatile: number;
@@ -39,6 +47,7 @@ export const state: AppState = {
   payload: null,
   scene: null,
   activeLayer: 1,
+  layerVisible: { 1: true, 2: true },
   gridEnabled: false,
   blockViewEnabled: false,
   selectedMetatile: 0,
@@ -55,7 +64,7 @@ async function init(): Promise<void> {
   events.emit('status:info', 'Downloading payload...');
 
   try {
-    state.payload = await fetchPayload(PAYLOAD_URL);
+    state.payload = await fetchPayload(PAYLOAD_URL, PAYLOAD_VERSION);
   } catch (err) {
     events.emit('status:info', `Failed to load payload: ${err}`);
     return;
@@ -102,7 +111,7 @@ async function init(): Promise<void> {
         mainView.refreshOffscreen();
         const changes = tilemapEditor.commitStampBatch();
         if (changes) {
-          history.push(makeTilemapAction(changes));
+          history.push(makeTilemapAction(changes, state.activeLayer));
           updateUndoRedoButtons();
         }
         updatePatternUI();
@@ -192,23 +201,41 @@ async function init(): Promise<void> {
 
   // --- View refresh helpers ---
 
-  function refreshMainView(): void {
-    if (!state.scene) return;
+  let contentWidth = 0;
+  let contentHeight = 0;
+
+  /**
+   * Push the blended image to the canvas. Pan/zoom are kept unless `fit` is
+   * set or the image size changed (e.g. hiding the larger of two layers).
+   */
+  function showComposite(fit: boolean): void {
     const img = tilemapEditor.getImageData();
-    if (img) {
+    if (!img) {
+      contentWidth = 0;
+      contentHeight = 0;
+      mainView.clearContent();
+      return;
+    }
+    if (fit || img.width !== contentWidth || img.height !== contentHeight) {
+      contentWidth = img.width;
+      contentHeight = img.height;
       mainView.setContentSize(img.width, img.height);
       mainView.setImageData(img);
       mainView.fitToView();
+    } else {
+      mainView.setImageData(img);
+      mainView.redraw();
     }
+  }
+
+  function refreshMainView(): void {
+    if (!state.scene) return;
+    showComposite(true);
   }
 
   function updateMainPixels(): void {
     if (!state.scene) return;
-    const img = tilemapEditor.getImageData();
-    if (img) {
-      mainView.setImageData(img);
-      mainView.redraw();
-    }
+    showComposite(false);
   }
 
   function refreshAll(): void {
@@ -219,45 +246,45 @@ async function init(): Promise<void> {
     refreshMainView();
   }
 
-  function refreshAfterTilesetEdit(): void {
+  /** A layer's tileset changed: re-render that layer and re-blend. */
+  function refreshAfterTilesetEdit(layer: Layer): void {
     tilesetEditor.refresh();
-    tilemapEditor.refresh();
+    tilemapEditor.refreshLayer(layer);
     gfxViewer.refresh();
     updateMainPixels();
   }
 
   // --- Undo/redo action factories ---
+  // Actions capture the layer they were made on: the active layer may differ
+  // by the time they are undone or redone.
 
-  function makeTilemapAction(changes: TileChange[]): UndoAction {
+  function makeTilemapAction(changes: TileChange[], layer: Layer): UndoAction {
     return {
-      description: `Stamp ${changes.length} tile(s)`,
+      description: `Stamp ${changes.length} tile(s) on layer ${layer}`,
       undo() {
-        tilemapEditor.applyTileChanges(changes, false);
+        tilemapEditor.applyTileChanges(changes, false, layer);
         updateMainPixels();
       },
       redo() {
-        tilemapEditor.applyTileChanges(changes, true);
+        tilemapEditor.applyTileChanges(changes, true, layer);
         updateMainPixels();
       },
     };
   }
 
-  function makeTilesetAction(entryIndex: number, oldWord: number, newWord: number): UndoAction {
+  function makeTilesetAction(entryIndex: number, oldWord: number, newWord: number, layer: Layer): UndoAction {
+    const tileset = () => layer === 2
+      ? state.scene?.effectTileset
+      : state.scene?.mainTileset;
     return {
-      description: `Edit tileset entry ${entryIndex}`,
+      description: `Edit layer ${layer} tileset entry ${entryIndex}`,
       undo() {
-        const ts = state.activeLayer === 2
-          ? state.scene?.effectTileset
-          : state.scene?.mainTileset;
-        ts?.setEntryWord(entryIndex, oldWord);
-        refreshAfterTilesetEdit();
+        tileset()?.setEntryWord(entryIndex, oldWord);
+        refreshAfterTilesetEdit(layer);
       },
       redo() {
-        const ts = state.activeLayer === 2
-          ? state.scene?.effectTileset
-          : state.scene?.mainTileset;
-        ts?.setEntryWord(entryIndex, newWord);
-        refreshAfterTilesetEdit();
+        tileset()?.setEntryWord(entryIndex, newWord);
+        refreshAfterTilesetEdit(layer);
       },
     };
   }
@@ -313,14 +340,84 @@ async function init(): Promise<void> {
     layerBtn.classList.toggle('active', state.activeLayer === 2);
   }
 
-  function switchLayer(layer: 1 | 2): void {
+  // --- Layer activation and visibility ---
+  //
+  // Both layers are drawn blended on one canvas (see core/compositor.ts), but
+  // edits only ever touch the active layer, whose tileset fills the picker.
+  // Invariant: the active layer is always visible, and at least one layer is.
+
+  const OTHER_LAYER: Record<Layer, Layer> = { 1: 2, 2: 1 };
+
+  function isLayerAvailable(layer: Layer): boolean {
+    return !!tilemapEditor.managerFor(layer)?.tilemap;
+  }
+
+  /** Whether a layer is actually drawn: it has a tilemap and is toggled on. */
+  function isLayerShown(layer: Layer): boolean {
+    return isLayerAvailable(layer) && state.layerVisible[layer];
+  }
+
+  /** Make `layer` the edited layer. Tileset, VRAM and palette panels follow it. */
+  function setActiveLayer(layer: Layer): void {
     if (state.activeLayer === layer) return;
     state.activeLayer = layer;
     updateLayerButton();
     tilemapEditor.setPatternMode(false);
     updatePatternUI();
     events.emit('layer:changed', { layer });
-    refreshAll();
+    tilesetEditor.refresh();
+    gfxViewer.refresh();
+    paletteViewer.refresh();
+    mainView.redraw();
+  }
+
+  /** Re-blend after a visibility change, keeping pan/zoom unless the image size changed. */
+  function applyLayerVisibility(): void {
+    tilemapEditor.recomposite();
+    updateMainPixels();
+    if (dropdown.classList.contains('open')) buildDropdownContent();
+  }
+
+  /**
+   * Edit button: make the layer active.
+   * If both layers are shown nothing else changes. If only one is shown, the
+   * shown layer is swapped for the one being edited.
+   */
+  function selectLayerForEdit(layer: Layer): void {
+    if (!isLayerAvailable(layer)) return;
+    const other = OTHER_LAYER[layer];
+    if (isLayerAvailable(other) && !(isLayerShown(layer) && isLayerShown(other))) {
+      state.layerVisible[layer] = true;
+      state.layerVisible[other] = false;
+    }
+    setActiveLayer(layer);
+    applyLayerVisibility();
+  }
+
+  /**
+   * Visibility toggle. Turning a layer on only shows it. Turning the active
+   * layer off hands editing to the other layer. The last visible layer cannot
+   * be turned off.
+   */
+  function toggleLayerVisibility(layer: Layer): void {
+    if (!isLayerAvailable(layer)) return;
+    const other = OTHER_LAYER[layer];
+
+    if (state.layerVisible[layer]) {
+      if (!isLayerShown(other)) {
+        events.emit('status:info', 'At least one layer must stay visible');
+        return;
+      }
+      state.layerVisible[layer] = false;
+      if (state.activeLayer === layer) setActiveLayer(other);
+    } else {
+      state.layerVisible[layer] = true;
+    }
+    applyLayerVisibility();
+
+    // Showing or hiding layer 1 changes how the active layer 2 maps onto the canvas.
+    const fit = tilemapEditor.describeLayerFit();
+    if (fit) events.emit('status:info', fit);
   }
 
   const TYPE_ORDER: LoadedAssetType[] = ['tilemap', 'tileset', 'bitmap', 'palette'];
@@ -336,6 +433,8 @@ async function init(): Promise<void> {
   };
 
   const ICON_EDIT = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M1.5 10.5l.8-3.2L9 .5l2 2L4.2 9.3z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M7.8 1.8l2.4 2.4" stroke="currentColor" stroke-width="1" fill="none"/></svg>';
+  const ICON_EYE = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M.8 6C2 3.6 3.9 2.4 6 2.4S10 3.6 11.2 6C10 8.4 8.1 9.6 6 9.6S2 8.4.8 6z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/><circle cx="6" cy="6" r="1.6" fill="currentColor"/></svg>';
+  const ICON_EYE_OFF = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M.8 6C2 3.6 3.9 2.4 6 2.4S10 3.6 11.2 6C10 8.4 8.1 9.6 6 9.6S2 8.4.8 6z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round" opacity=".45"/><path d="M1.5 10.5l9-9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
   const ICON_IMPORT = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 8V1.5M3.5 5.5L6 8l2.5-2.5M1.5 10.5h9" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const ICON_EXPORT = '<svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 2v6.5M3.5 4.5L6 2l2.5 2.5M1.5 10.5h9" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -360,8 +459,15 @@ async function init(): Promise<void> {
         const layerHint = a.layer ? ` L${a.layer}` : '';
         html += `<div class="asset-entry" data-index="${globalIdx}">`;
         if (type === 'tilemap') {
-          const target = (a.layer & 1) ? 1 : 2;
-          html += `<button class="asset-btn edit-btn" data-action="edit" data-layer="${target}" title="Edit this tilemap">${ICON_EDIT}</button>`;
+          const target: Layer = (a.layer & 1) ? 1 : 2;
+          const visible = state.layerVisible[target];
+          const isLast = visible && !isLayerShown(OTHER_LAYER[target]);
+          const visTitle = isLast
+            ? 'At least one layer must stay visible'
+            : `${visible ? 'Hide' : 'Show'} layer ${target}`;
+          html += `<button class="asset-btn vis-btn${visible ? '' : ' off'}" data-action="visibility" data-layer="${target}" title="${visTitle}"${isLast ? ' disabled' : ''}>${visible ? ICON_EYE : ICON_EYE_OFF}</button>`;
+          const editing = state.activeLayer === target;
+          html += `<button class="asset-btn edit-btn${editing ? ' active' : ''}" data-action="edit" data-layer="${target}" title="${editing ? 'Editing this tilemap' : 'Edit this tilemap'}">${ICON_EDIT}</button>`;
         }
         html += `<span class="asset-type-icon" title="${type}">${TYPE_SVG[type]}</span>`;
         html += `<span class="asset-name" title="${a.filename}${layerHint}">${a.filename}${layerHint}</span>`;
@@ -424,11 +530,20 @@ async function init(): Promise<void> {
     const index = Number(btn.dataset.index);
     const asset = state.scene.loadedAssets[index];
 
+    if (action === 'visibility') {
+      // The dropdown is rebuilt in place (detaching the clicked button), so
+      // keep this click from reaching the outside-click handler that closes it.
+      e.stopPropagation();
+      toggleLayerVisibility(Number(btn.dataset.layer) as Layer);
+      return;
+    }
+
     if (action === 'edit') {
-      const layer = Number(btn.dataset.layer) as 1 | 2;
-      switchLayer(layer);
+      const layer = Number(btn.dataset.layer) as Layer;
+      selectLayerForEdit(layer);
       closeDropdown();
-      events.emit('status:info', `Editing layer ${layer} tilemap`);
+      const fit = tilemapEditor.describeLayerFit();
+      events.emit('status:info', `Editing layer ${layer} tilemap${fit ? ` \u2014 ${fit}` : ''}`);
       return;
     }
 
@@ -777,7 +892,7 @@ async function init(): Promise<void> {
       propBlock.checked,
     );
     if (change) {
-      history.push(makeTilesetAction(change.entryIndex, change.oldWord, change.newWord));
+      history.push(makeTilesetAction(change.entryIndex, change.oldWord, change.newWord, state.activeLayer));
       updateUndoRedoButtons();
     }
     events.emit('tileset:changed');
@@ -828,7 +943,7 @@ async function init(): Promise<void> {
     refreshAll();
   });
 
-  events.on('tileset:changed', refreshAfterTilesetEdit);
+  events.on('tileset:changed', () => refreshAfterTilesetEdit(state.activeLayer));
 
   events.on('tileset:selected', ({ metatileIndex, quadIndex }) => {
     state.selectedMetatile = metatileIndex;
@@ -849,7 +964,7 @@ async function init(): Promise<void> {
     state.selectedPalette = paletteIndex;
     const change = tilesetEditor.assignPalette(paletteIndex);
     if (change) {
-      history.push(makeTilesetAction(change.entryIndex, change.oldWord, change.newWord));
+      history.push(makeTilesetAction(change.entryIndex, change.oldWord, change.newWord, state.activeLayer));
       updateUndoRedoButtons();
       events.emit('tileset:changed');
       tilesetEditor.updatePropertyPanel();
@@ -862,7 +977,7 @@ async function init(): Promise<void> {
     state.selectedGfxTile = tileIndex;
     const change = tilesetEditor.assignTile(tileIndex);
     if (change) {
-      history.push(makeTilesetAction(change.entryIndex, change.oldWord, change.newWord));
+      history.push(makeTilesetAction(change.entryIndex, change.oldWord, change.newWord, state.activeLayer));
       updateUndoRedoButtons();
     }
     events.emit('tileset:changed');
@@ -884,11 +999,14 @@ async function init(): Promise<void> {
     events.emit('status:info', `Loading ${entry.description}...`);
 
     state.activeLayer = 1;
+    state.layerVisible = { 1: true, 2: true };
     updateLayerButton();
 
     state.scene = loadScene(state.manifest, state.payload, entry.group, entry.name);
     events.emit('scene:loaded');
-    events.emit('status:info', `Loaded: ${entry.description} (ID ${entry.id})`);
+    events.emit('status:info',
+      `Loaded: ${entry.description} (ID ${entry.id}) \u2014 ${describeBlend(
+        state.scene.blend, [isLayerAvailable(1), isLayerAvailable(2)])}`);
   });
 }
 

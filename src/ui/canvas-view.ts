@@ -73,6 +73,16 @@ export class CanvasView {
     }
   }
 
+  /** Remove the displayed content (e.g. a scene with no tilemaps). */
+  clearContent(): void {
+    this.imageData = null;
+    this.offscreen = null;
+    this.offscreenCtx = null;
+    this.contentWidth = 0;
+    this.contentHeight = 0;
+    this.redraw();
+  }
+
   refreshOffscreen(): void {
     if (this.imageData && this.offscreenCtx) {
       this.offscreenCtx.putImageData(this.imageData, 0, 0);

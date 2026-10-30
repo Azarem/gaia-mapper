@@ -190,29 +190,50 @@ function parseSceneMeta(extractedPath: string): Map<number, AssetEntry[]> {
 }
 
 /* ------------------------------------------------------------------ */
-/*  PPU effect-offset table parser                                     */
+/*  PPU display preset table parser                                    */
 /* ------------------------------------------------------------------ */
 
+/** The display preset bytes the mapper consumes (record layout: see display_preset_table.asm). */
+interface DisplayPreset {
+  /** +0: TM/TMW — layers enabled on the main screen. */
+  tm: number;
+  /** +1: TS/TSW — layers enabled on the sub screen. */
+  ts: number;
+  /** +2: CGWSEL — color math window/addend select (bit 1 = sub screen is the addend). */
+  cgwsel: number;
+  /** +3: CGADSUB — color math layers + add/subtract + half. */
+  cgadsub: number;
+  /** +4: layer flags — bits 0/1 force the tile-priority bit on layer 1/2, bit 7 clear = layer 2 tile page offset. */
+  layerFlags: number;
+}
+
 /**
- * Parse display_preset_table.asm to extract the effect-layer VRAM page-select
- * flag for each PPU index. Byte 4 (0-indexed) bit 7 controls whether layer 2
- * tile indices are OR'd with $0100 (+256), shifting to page 1.
- * Bit 7 clear → effectOffset = true.
+ * Parse display_preset_table.asm into one DisplayPreset per preset index.
+ * Each `display-preset` line carries ten byte operands; the mapper needs the
+ * first five.
  */
-function parsePpuEffectOffset(extractedPath: string): boolean[] {
+function parseDisplayPresets(extractedPath: string): DisplayPreset[] {
   const asmPath = path.join(extractedPath, 'tables', 'display_preset_table.asm');
   if (!fs.existsSync(asmPath)) {
-    console.warn('PPU display preset table not found, effectOffset will default to false');
-    return [];
+    throw new Error(`PPU display preset table not found: ${asmPath}`);
   }
   const src = fs.readFileSync(asmPath, 'utf-8').replace(/\r/g, '');
 
-  // Each display-preset has 10 byte args; byte index 4 (5th arg) has the flag
-  const entries = [...src.matchAll(/display-preset\s*<\s*((?:#\w+,\s*){4})(#\w+)/g)];
-  return entries.map(m => {
-    const byte4 = parseInt(m[2].replace('#', ''), 16);
-    return (byte4 & 0x80) === 0;
-  });
+  const presets: DisplayPreset[] = [];
+  for (const m of src.matchAll(/display-preset\s*<([^>]*)>/g)) {
+    const bytes = m[1].split(',').map(s => parseHex(s.trim()));
+    if (bytes.length !== 10 || bytes.some(Number.isNaN)) {
+      throw new Error(`Malformed display-preset record: ${m[0]}`);
+    }
+    presets.push({
+      tm: bytes[0],
+      ts: bytes[1],
+      cgwsel: bytes[2],
+      cgadsub: bytes[3],
+      layerFlags: bytes[4],
+    });
+  }
+  return presets;
 }
 
 /* ------------------------------------------------------------------ */
@@ -285,8 +306,9 @@ function main(): void {
   const sceneMeta = parseSceneMeta(extractedPath);
   console.log(`Parsed ${sceneMeta.size} scene_meta entries from ASM`);
 
-  // 4. Parse PPU effect-offset table
-  const ppuEffectOffset = parsePpuEffectOffset(extractedPath);
+  // 4. Parse PPU display presets (TM/TS/CGWSEL/CGADSUB/layer flags)
+  const displayPresets = parseDisplayPresets(extractedPath);
+  console.log(`Parsed ${displayPresets.length} display presets`);
 
   // 5. Build the manifest groups by merging groups.json structure with scene_meta assets
   const groups: Record<string, GroupDef> = {};
@@ -311,11 +333,14 @@ function main(): void {
 
       matched++;
 
-      // Inject effectOffset into PPU entries
+      // Inject the display preset registers into PPU entries
       for (const asset of assets) {
-        if (asset.type === 'ppu' && typeof asset.meta.index === 'number') {
-          asset.meta.effectOffset = ppuEffectOffset[asset.meta.index as number] ?? false;
+        if (asset.type !== 'ppu') continue;
+        const preset = displayPresets[asset.meta.index as number];
+        if (!preset) {
+          throw new Error(`${groupName}/${sceneName}: display preset ${asset.meta.index} does not exist`);
         }
+        Object.assign(asset.meta, preset);
       }
 
       scenes[sceneName] = {

@@ -2,6 +2,10 @@ import { VirtualVRAM } from '../core/vram';
 import { PaletteState } from '../core/palette';
 import { TilesetRenderer } from '../core/tileset';
 import { TilemapManager, serializeTilemap } from '../core/tilemap';
+import {
+  DEFAULT_BLEND, parseDisplayBlend, parseDisplayRegisters, usesEffectTileOffset,
+  type DisplayBlend,
+} from '../core/display';
 import type { PayloadManifest, AssetEntry, SceneDef } from './manifest';
 
 export type LoadedAssetType = 'tilemap' | 'tileset' | 'bitmap' | 'palette';
@@ -22,6 +26,8 @@ export interface SceneState {
   effectTileset: TilesetRenderer;
   mainTilemap: TilemapManager;
   effectTilemap: TilemapManager;
+  /** How layers 1 and 2 combine on screen, parsed from the scene's display-mode preset. */
+  blend: DisplayBlend;
   loadedAssets: LoadedAsset[];
 }
 
@@ -105,6 +111,7 @@ export function loadScene(
     effectTileset: new TilesetRenderer(),
     mainTilemap: new TilemapManager(),
     effectTilemap: new TilemapManager(),
+    blend: DEFAULT_BLEND,
     loadedAssets: [],
   };
 
@@ -243,11 +250,13 @@ function executeAssetCommand(
       break;
     }
 
-    case 'ppu':
-      if (asset.meta.effectOffset) {
-        state.effectTileset.useOffset = true;
-      }
+    case 'ppu': {
+      // The last display-mode command executed wins, as on hardware.
+      const regs = parseDisplayRegisters(asset.meta);
+      state.blend = parseDisplayBlend(regs);
+      state.effectTileset.useOffset = usesEffectTileOffset(regs.layerFlags);
       break;
+    }
     case 'spritemap':
     case 'music':
       break;

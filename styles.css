@@ -304,6 +304,33 @@ button:active {
   color: var(--accent);
 }
 
+/* The layer currently being edited */
+.asset-btn.edit-btn.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.asset-btn.vis-btn:hover {
+  color: var(--accent);
+}
+
+.asset-btn.vis-btn.off {
+  color: var(--text-dim);
+}
+
+/* The last visible layer cannot be hidden */
+.asset-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.asset-btn:disabled:hover {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+}
+
 .asset-btn.import-btn:hover {
   color: #81c784;
 }

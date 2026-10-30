@@ -40,6 +40,8 @@ gaia-mapper/
 │   │   ├── tile-decoder.ts       # 4bpp planar tile decode + render to RGBA
 │   │   ├── tileset.ts            # Tileset entries (16-bit words), metatile rendering
 │   │   ├── tilemap.ts            # Tilemap parse/serialize/resize/render, block coordinate math
+│   │   ├── display.ts            # PPU display preset registers → DisplayBlend (blend mode, math flags)
+│   │   ├── compositor.ts         # Blends the layer planes into the displayed image (BG priority + color math)
 │   │   └── sprite.ts             # Sprite format types (Phase 3 placeholder)
 │   ├── data/                     # Asset loading pipeline
 │   │   ├── payload.ts            # Fetch ZIP, IndexedDB cache, fflate unzip
@@ -124,6 +126,7 @@ interface AppState {
   payload: Map<string, Uint8Array> | null;
   scene: SceneState | null;       // includes loadedAssets[] for the asset dropdown
   activeLayer: 1 | 2;             // auto-reset to 1 on scene switch
+  layerVisible: Record<1 | 2, boolean>; // both true on scene switch; at least one always true
   gridEnabled: boolean;
   selectedMetatile: number;       // 0-255
   selectedQuad: number;           // 0-3 (TL, TR, BL, BR)

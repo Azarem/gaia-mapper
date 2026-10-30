@@ -101,7 +101,7 @@ Scenes are loaded by executing an ordered list of asset commands from the manife
 | `tilemap` | Load tilemap data (layer bitmask: 1=main, 2=effect) |
 | `label` | Mark a checkpoint in the asset list |
 | `jump` | Follow to a labeled checkpoint in another scene's asset list |
-| `ppu` | PPU register config (read but not acted on) |
+| `ppu` | Display preset: TM, TS, CGWSEL, CGADSUB and layer flags. Drives layer blending and the layer 2 tile page offset |
 
 ### Jump/Label System
 
@@ -122,7 +122,7 @@ The scene loader builds a label index at startup and follows jumps recursively w
 
 ### Layer 2 / Effect Layer
 
-After loading all assets, the effect tileset's `useOffset` is set to `true` so it reads from VRAM page 1. This matches the SNES hardware where BG1 and BG2 use separate character base addresses.
+The effect tileset reads from VRAM page 1 (`useOffset = true`) unless the scene's last `ppu` command has `layerFlags` bit 7 set. This matches the SNES hardware where BG1 and BG2 use separate character base addresses. The same `ppu` command sets `SceneState.blend`, which the compositor uses to combine the two layers.
 
 ## SceneState
 
@@ -136,6 +136,7 @@ interface SceneState {
   effectTileset: TilesetRenderer;  // Layer 2 tileset (useOffset=true)
   mainTilemap: TilemapManager;     // Layer 1 tilemap
   effectTilemap: TilemapManager;   // Layer 2 tilemap
+  blend: DisplayBlend;             // How layers 1 and 2 combine (from the ppu command)
   loadedAssets: LoadedAsset[];     // Tracked assets for the asset dropdown
 }
 ```
